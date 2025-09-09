@@ -32,8 +32,9 @@ class LoginWindow(QWidget):
     User enters his/her icloud account credentials at Login Window.
     """
 
-    def __init__(self):
+    def __init__(self, userdata: dict[str, str]):
         super().__init__()
+        self.userdata = userdata
         self.setWindowTitle("Login Window")
         self.setMinimumWidth(360)
 
@@ -41,13 +42,15 @@ class LoginWindow(QWidget):
         heading.setFont(QFont("Times", 16, 500, True))
         username_lbl = QLabel("Username:", self)
         username_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
-        username_entry = QLineEdit(self)
+        self.username_entry = QLineEdit(self)
         password_lbl = QLabel("Password:", self)
         password_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
-        password_entry = QLineEdit(self)
+        self.password_entry = QLineEdit(self)
         save_creds_cb = QCheckBox("Save Credentials", self)
         enter_btn = QPushButton("Enter", self)
+        enter_btn.clicked.connect(self.read_user_credentials)
         quit_btn = QPushButton("Quit", self)
+        quit_btn.clicked.connect(self.close)
 
         # visually seperate action buttons from form
         separator = QFrame(self)
@@ -60,9 +63,9 @@ class LoginWindow(QWidget):
         root_layout = QVBoxLayout(self)
         cred_field_layout = QGridLayout()
         cred_field_layout.addWidget(username_lbl, 0, 0)
-        cred_field_layout.addWidget(username_entry, 0, 1)
+        cred_field_layout.addWidget(self.username_entry, 0, 1)
         cred_field_layout.addWidget(password_lbl, 1, 0)
-        cred_field_layout.addWidget(password_entry, 1, 1)
+        cred_field_layout.addWidget(self.password_entry, 1, 1)
         button_layout = QHBoxLayout()
         button_layout.addWidget(quit_btn)
         button_layout.addWidget(enter_btn)
@@ -74,6 +77,18 @@ class LoginWindow(QWidget):
         root_layout.addLayout(button_layout, 0)
 
         self.setLayout(root_layout)
+
+    def populate_userdata(self):
+        """
+        populate the userdata dictionary with user credentials.
+        """
+        self.userdata["username"] = self.username_entry.text().strip()
+        self.userdata["password"] = self.password_entry.text().strip()
+
+    def read_user_credentials(self):
+        self.populate_userdata()
+        self.close()
+        sys.stderr.write("Application closed\n")
 
 
 @final
