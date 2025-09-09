@@ -7,7 +7,7 @@ Reads in users' username (normally the email address) and password for icloud
 server.
 If "Save Credentials" checkbox is checked the first time user logs in password
 and username are saved.
-Next time the same username is typed in (or autofilled by application) the
+Next time the same username is typed in (or auto filled by application) the
 password is filled automatically.
 Note that we have no way of verifying the correctness of the credentials until
 we try to actively login to icloud's calendar server.
@@ -15,6 +15,9 @@ If a username we have a record of (previously saved) is re-entered with a
 different password, and "Save Credentials" checkbox is checked we update the
 saved password for the user.  If the checkbox is not checked, credentials are not
 updated.
+NOTE: For the time being I am going to save user credentials in "data/"
+directory.  But later, we need to modify the application so that the user can
+select where his/her credentials will be saved.
 
 
 UploadWindow
@@ -23,7 +26,7 @@ Two mutually exclusive checkboxes to select what type of roster user is going to
 upload: term roster or a week roster.
 Then "Upload Roster" button is enabled to select the roster file. This file is an
 excel spreadsheet (*.xlsx).
-"Enter" button is enabled once roster is updaated.
+"Enter" button is enabled once roster is updated.
 
 
 NameSelectWindow
@@ -34,7 +37,7 @@ User needs to select his/her name from the list.
 There is a checkbox "Remember Me" to save the selected username.
 If this is the first time the user logs in and the checkbox is checked, we save
 the selected name against the username. If not and the username is known and a
-name in the list is the one user selected previously, we autoselect the combobox
+name in the list is the one user selected previously, we auto select the combobox
 with this name.
 If a known user selects a different name we update this name as the one the last
 used. We could potentially save all the names the user selected.  We could
