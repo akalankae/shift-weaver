@@ -87,8 +87,8 @@ class LoginWindow(QWidget):
 
     def read_user_credentials(self):
         self.populate_userdata()
-        self.close()
-        sys.stderr.write("Application closed\n")
+        assert self.close() # Dbg
+        sys.stderr.write("Application closed\n") # Dbg
 
 
 @final
