@@ -42,3 +42,13 @@ with this name.
 If a known user selects a different name we update this name as the one the last
 used. We could potentially save all the names the user selected.  We could
 either sort them according to recency or frequency of use.
+
+
+Saving user credentials
+-----------------------
+We will get the hash of username (?MD5) and save credentials with this filename.
+For example, akalankae@gmail.com gives MD5: 262f29a2e0b85a75a31f416da3cf8401.
+So the credentials would be saved in 262f29a2e0b85a75a31f416da3cf8401.txt
+Data should probably be in some non readable format for security, but first we
+will save it as a text file for simplicity. Remember to change this to a data
+file later, possibly using `pickle` module.
