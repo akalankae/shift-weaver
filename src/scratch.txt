@@ -52,3 +52,15 @@ So the credentials would be saved in 262f29a2e0b85a75a31f416da3cf8401.txt
 Data should probably be in some non readable format for security, but first we
 will save it as a text file for simplicity. Remember to change this to a data
 file later, possibly using `pickle` module.
+
+
+TODO:
+
+GUI design: Explore the possibility of using QStackedLayout with 3 windows
+instead of 3 separate windows: LoginWindow, UploadWindow & NameSelectWindow
+
+Autofill username: create a directory (something like "credentials") in target
+directory used to store user credentials, read all files stored here and get a
+list of previously used usernames to go through.
+
+Autofill password
