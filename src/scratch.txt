@@ -1,6 +1,10 @@
 # Scratch pad
 # Write your ideas about how to put the pieces together here.
 
+
+                    #1 Graphical-User interface (GUI)
+                    =================================
+
 LoginWindow
 ===========
 Reads in users' username (normally the email address) and password for icloud
@@ -54,6 +58,18 @@ will save it as a text file for simplicity. Remember to change this to a data
 file later, possibly using `pickle` module.
 
 
+Source code Documentation
+-------------------------
+Have good documentation for functions for maintainability.
+Suggest following topics in function doc string.
+1) Interface (API)
+    a. Parameters
+    b. Return value
+2) Assumptions
+3) Errors
+4) Caveats
+
+
 TODO:
 
 GUI design: Explore the possibility of using QStackedLayout with 3 windows
@@ -64,3 +80,43 @@ directory used to store user credentials, read all files stored here and get a
 list of previously used usernames to go through.
 
 Autofill password
+
+
+                    #2 PARSING EXCEL FILES
+                    ======================
+
+- Use openpyxl package to read excel files.
+- Need to generate a data structure to hold shifts of the user.
+
+
+Analysis of the term roster
+---------------------------
+First column has following:
+- shift time symbols/time slots vs count of people for relevant slot
+- "sick relief" vs number of people (if any) for particular day
+- "Date" vs list of dates for the term from start to end of term
+- "Day" vs name of the day for each day
+- names of people rostered
+- names are grouped according to level of supervision, names for each level are
+  preceded by the label for that level (e.g. Level 3 (Red TL), Level (Red TL) -
+  Non-ACEM)
+
+Subsequent columns are grouped as 14-day sets for pay periods. In between
+these groups are columns of metadata for number of shifts each person had to do
+for that pay period.
+
+Ideas
+-----
+I need to find out which column the names are in. After that need to figure out
+the relevant column for the user.
+
+Sometimes the "Date" label is absent from the column. But I can figure out which
+row this is because it is the only row with dates.
+
+Some cells have shift time symbols (e.g. D, E, N). But sometimes you can find all
+kinds of symbols there, so you need to be prepared for this.
+
+Names are not consistent either. Usually its "FIRSTNAME SURNAME", but sometimes
+there are some labels following the name. E.g. John Doe - UKSRMO, Jane Doe (SRMO)
+You need to recognise strings as names while making reservations for these
+inconsistencies.
