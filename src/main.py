@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # main.py
+
 # Main program for application
+# Launch login window to read in username and password.  If user has a record
+# check password against saved password.  Comment on whether passwords are same
+# or not. If user doesn't have a record save the entered password.
+#
 
 import hashlib
 import json
@@ -9,55 +14,46 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
 
-from gui import LoginWindow  # , UploadWindow, NameSelectWindow
-
-SECRETS_DIR = "data"  # directory where user credential files are saved
+from gui import LoginWindow, UploadWindow
 
 
-userdata: dict[str, str] = dict()
+userdata: dict[str, str] = dict()  # username, password, roster_type, roster_path
 
+# Get user credentials [LoginWindow]
 app = QApplication(sys.argv)
+login_win = LoginWindow(userdata)
+login_win.show()
+if not app.exec():
+    print(f"""
+Username: {userdata.get("username")}
+Password: {userdata.get("password")}
+""")
 
-win = LoginWindow(userdata)
-win.show()
+# Upload user excel file [UploadWindow]
+upload_win = UploadWindow(userdata)
+upload_win.show()
 
-app.exec()
+if not app.exec():
+    print("Done")
 
-# NOTE: You have to make sure username/password are not empty strings
-print(f"Username: {userdata.get('username')}")
-print(f"Password: {userdata.get('password')}")
-
-username = userdata.get("username", "")
-username_hexdigest = hashlib.md5(username.encode()).hexdigest()
-secrets_dir = Path(SECRETS_DIR)
-secrets_path = secrets_dir.joinpath(username_hexdigest)
-if secrets_path.is_file():
-    try:
-        with secrets_path.open("r") as f:
-            saved_userdata = json.load(f)
-    except OSError as err:
-        sys.stderr.write(f"{err}\n")
-        sys.stderr.write(f"Cannot create {secrets_path} while {SECRETS_DIR} exists\n")
-        sys.exit(1)
-    else:
-        saved_password = saved_userdata.get("password")
-        username = userdata.get("username")
-        password = userdata.get("password")
-        if not saved_password:
-            sys.stderr.write("user credentials file was found with empty password!\n")
-            sys.exit(2)
-        if saved_password != password:
-            sys.stderr.write(f"Saved password for {username} doesn't match just now!\n")
-            sys.exit(3)
-        print(f"Saved password for {username} matches existing password")
+# Get a list of names in the roster
 
 
-if not secrets_dir.is_dir():
-    try:
-        secrets_dir.mkdir()
-    except FileExistsError as err:
-        sys.stderr.write(f"{err}\n")
-        sys.exit(1)
-    else:
-        with secrets_path.open("w") as secrets_file:
-            json.dump(userdata, secrets_file)
+# Contact CalDAV server with username/password to get a list of shifts for the
+# time period of the roster
+
+
+# Get user to select his/her name in the roster [NameSelectWindow]
+
+
+# Get a list of shifts in the roster
+
+
+# Compare and contrast the shifts that were found in current calendar (if there
+# are any) against shifts in the roster
+
+
+# Show a summary of changes (if any) from shifts found in current calendar
+
+
+# Update the shifts in the CalDAV server

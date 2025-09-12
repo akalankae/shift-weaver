@@ -2,27 +2,31 @@
 # gui.py
 # Graphical User Interface for roster synchronizer program.
 
-import sys
-from typing import override, final
+import hashlib
+import json
 import random
+import sys
 from pathlib import Path
+from typing import final, override
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QShowEvent
 from PyQt6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
     QSizePolicy,
-    QButtonGroup,
-    QFrame,
-    QComboBox,
+    QVBoxLayout,
+    QWidget,
+    QFileDialog,
+    QMessageBox,
 )
 
 
@@ -30,11 +34,13 @@ from PyQt6.QtWidgets import (
 class LoginWindow(QWidget):
     """
     User enters his/her icloud account credentials at Login Window.
+    Caller provides a dictionary `login_info` to put user credentials into.
     """
 
     def __init__(self, userdata: dict[str, str]):
         super().__init__()
-        self.userdata = userdata
+        self.userdata = userdata  # dict to store user credentials
+
         self.setWindowTitle("Login Window")
         self.setMinimumWidth(360)
 
@@ -48,7 +54,7 @@ class LoginWindow(QWidget):
         self.password_entry = QLineEdit(self)
         save_creds_cb = QCheckBox("Save Credentials", self)
         enter_btn = QPushButton("Enter", self)
-        enter_btn.clicked.connect(self.read_user_credentials)
+        enter_btn.clicked.connect(self.get_user_credentials)
         quit_btn = QPushButton("Quit", self)
         quit_btn.clicked.connect(self.close)
 
@@ -78,17 +84,14 @@ class LoginWindow(QWidget):
 
         self.setLayout(root_layout)
 
-    def populate_userdata(self):
+    def get_user_credentials(self):
         """
         populate the userdata dictionary with user credentials.
         """
         self.userdata["username"] = self.username_entry.text().strip()
         self.userdata["password"] = self.password_entry.text().strip()
-
-    def read_user_credentials(self):
-        self.populate_userdata()
-        assert self.close() # Dbg
-        sys.stderr.write("Application closed\n") # Dbg
+        self.close()
+        return self.userdata
 
 
 @final
@@ -97,10 +100,10 @@ class UploadWindow(QWidget):
     User selects type of roster and roster file to upload.
     """
 
-    def __init__(self):
+    def __init__(self, userdata: dict[str, str]):
         super().__init__()
+        self.userdata = userdata  # dict to put info about choice of roster
         self.setWindowTitle("Upload Roster")
-        self.setFixedWidth(360)
 
         heading_lbl_1 = QLabel("Select Roster Type", self)
         heading_lbl_1.setFont(QFont("Times", 14, 250, True))
@@ -108,18 +111,20 @@ class UploadWindow(QWidget):
         week_roster_cbox = QCheckBox("Week Roster", self)
 
         roster_type = QButtonGroup(self)
-        roster_type.setExclusive(True)
-        roster_type.addButton(term_roster_cbox, 1)
-        roster_type.addButton(week_roster_cbox, 2)
+        roster_type.addButton(term_roster_cbox, 0)
+        roster_type.addButton(week_roster_cbox, 1)
+        roster_type.idClicked.connect(self.select_roster_type)
 
         heading_lbl_2 = QLabel("Select Roster File", self)
         heading_lbl_2.setFont(QFont("Times", 14, 250, True))
         self.upload_btn = QPushButton("Upload", self)
-        self.upload_btn.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self.upload_btn.setEnabled(False)
+        self.upload_btn.clicked.connect(self.select_roster)
         self.enter_btn = QPushButton("Enter", self)
+        self.enter_btn.setEnabled(False)
+        self.enter_btn.clicked.connect(self.upload_roster)
         self.quit_btn = QPushButton("Quit", self)
+        self.quit_btn.clicked.connect(self.close)
 
         # visually seperate action buttons from form
         separator = QFrame(self)
@@ -159,9 +164,41 @@ class UploadWindow(QWidget):
         """
         upload_btn_height = self.upload_btn.height()
         upload_btn_width = self.upload_btn.width()
-        self.enter_btn.setFixedSize(upload_btn_width, upload_btn_height // 2)
-        self.quit_btn.setFixedSize(upload_btn_width, upload_btn_height // 2)
+        self.enter_btn.setMinimumSize(upload_btn_width, upload_btn_height // 2)
+        self.quit_btn.setMinimumSize(upload_btn_width, upload_btn_height // 2)
         super().showEvent(a0)
+
+    def select_roster_type(self, checkbox_id: int):
+        self.roster_type = ("term", "week")[checkbox_id]
+        self.upload_btn.setEnabled(True)
+
+    def select_roster(self):
+        """
+        Upload the roster user wants to enter in the calendar.
+        """
+        filedialog = QFileDialog(self, "Select Roster File")
+        filedialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        # filedialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
+        filedialog.setViewMode(QFileDialog.ViewMode.Detail)
+
+        if filedialog.exec():
+            selected_file = filedialog.selectedFiles()[0]
+            self.roster_path = Path(selected_file)
+            self.upload_btn.setText(self.roster_path.name)
+            self.upload_btn.adjustSize()
+
+        if self.roster_path.is_file():
+            self.enter_btn.setEnabled(True)
+        else:
+            self.enter_btn.setEnabled(False)
+            print(f"Roster file: {self.roster_path} doesn't exist!")
+
+    def upload_roster(self):
+        """
+        Upload shifts from the selected roster to iCloud calendar.
+        """
+        print(f"Uploading roster file: {self.roster_path}")
+        self.close()
 
 
 @final
@@ -173,7 +210,7 @@ class NameSelectWindow(QWidget):
     def __init__(self, name_list: list[str]):
         super().__init__()
         self.setWindowTitle("Select Your Name")
-        self.setFixedWidth(360)
+        self.setMinimumWidth(360)
 
         heading_lbl = QLabel("Select Your Name", self)
         heading_lbl.setFont(QFont("Times", 16, 500, True))
@@ -213,9 +250,10 @@ class NameSelectWindow(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    win_1 = LoginWindow()
+    data = {}
+    win_1 = LoginWindow(data)
     win_1.show()
-    win_2 = UploadWindow()
+    win_2 = UploadWindow(data)
     win_2.show()
 
     FILE = "data/names.txt"  # file with list of random full names
