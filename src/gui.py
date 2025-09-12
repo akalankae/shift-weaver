@@ -2,32 +2,30 @@
 # gui.py
 # Graphical User Interface for roster synchronizer program.
 
-import hashlib
-import json
 import random
 import sys
 from pathlib import Path
 from typing import final, override
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QShowEvent
+from PyQt6.QtCore import QRegularExpression, Qt
+from PyQt6.QtGui import QFont, QRegularExpressionValidator, QShowEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
-    QFileDialog,
-    QMessageBox,
 )
+
+EMAIL_REGEX = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b"
 
 
 @final
@@ -46,12 +44,25 @@ class LoginWindow(QWidget):
 
         heading = QLabel("iCloud User Credentials", self)
         heading.setFont(QFont("Times", 16, 500, True))
+
+        # Username: has to be a valid email address
         username_lbl = QLabel("Username:", self)
         username_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.username_entry = QLineEdit(self)
+        self.username_entry.setClearButtonEnabled(True)
+        # make user unable to enter invalid characters in LineEdit field
+        input_validator = QRegularExpressionValidator(
+            QRegularExpression(EMAIL_REGEX), self.username_entry
+        )
+        self.username_entry.setValidator(input_validator)
+
+        # Password
         password_lbl = QLabel("Password:", self)
         password_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.password_entry = QLineEdit(self)
+        self.password_entry.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_entry.setClearButtonEnabled(True)
+
         save_creds_cb = QCheckBox("Save Credentials", self)
         enter_btn = QPushButton("Enter", self)
         enter_btn.clicked.connect(self.get_user_credentials)
@@ -197,7 +208,8 @@ class UploadWindow(QWidget):
         """
         Upload shifts from the selected roster to iCloud calendar.
         """
-        print(f"Uploading roster file: {self.roster_path}")
+        print(f"Roster type: {self.roster_type}")
+        print(f"Roster file: {self.roster_path}")
         self.close()
 
 

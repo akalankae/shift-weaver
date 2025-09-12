@@ -7,15 +7,11 @@
 # or not. If user doesn't have a record save the entered password.
 #
 
-import hashlib
-import json
 import sys
-from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
 
 from gui import LoginWindow, UploadWindow
-
 
 userdata: dict[str, str] = dict()  # username, password, roster_type, roster_path
 
@@ -23,18 +19,14 @@ userdata: dict[str, str] = dict()  # username, password, roster_type, roster_pat
 app = QApplication(sys.argv)
 login_win = LoginWindow(userdata)
 login_win.show()
-if not app.exec():
-    print(f"""
-Username: {userdata.get("username")}
-Password: {userdata.get("password")}
-""")
+
+app.exec()
 
 # Upload user excel file [UploadWindow]
 upload_win = UploadWindow(userdata)
 upload_win.show()
 
-if not app.exec():
-    print("Done")
+app.exec()
 
 # Get a list of names in the roster
 
