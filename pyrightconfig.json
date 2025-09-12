@@ -1,0 +1,6 @@
+{
+    "typeCheckingMode": "recommended",
+    "reportUnusedVariable": "error",
+    "reportUnusedCallResult": "none",
+    "reportUninitializedInstanceVariable": "warning",
+}
