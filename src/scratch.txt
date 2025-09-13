@@ -112,6 +112,13 @@ the relevant column for the user.
 
 Sometimes the "Date" label is absent from the column. But I can figure out which
 row this is because it is the only row with dates.
+If you go through cells of each row of a worksheet, you can find "date" row by
+virtue of having 7 to 14 cells with date instances next to each other. With
+openpyxl you can inspect the `is_date` data attribute of a cell to verify if the
+data in a cell is a date.
+I could write a function that takes the worksheet as input and give the
+numerical value of the row (starting from 1) that has the dates. I could return
+0 (or -1) if the function is unable to figure out which row has the dates.
 
 Some cells have shift time symbols (e.g. D, E, N). But sometimes you can find all
 kinds of symbols there, so you need to be prepared for this.
