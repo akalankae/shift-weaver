@@ -109,6 +109,18 @@ Ideas
 -----
 I need to find out which column the names are in. After that need to figure out
 the relevant column for the user.
+Names are not consistent. Usually its "FIRSTNAME SURNAME", but sometimes there
+are some labels following the name. E.g. John Doe - UKSRMO, Jane Doe (SRMO) You
+need to recognise strings as names while making reservations for these
+inconsistencies.
+Analysis of names:
+- has at least 2 space separated strings
+- each string starts with a uppercase letter
+- each string has more than 1 character
+- characters after first character could be lowercase or one of few alphabetical
+  characters such as hyphen (-), single quote (')
+- when hyphen (-) has space on both before and after it cannot be belonging to a
+  name
 
 Sometimes the "Date" label is absent from the column. But I can figure out which
 row this is because it is the only row with dates.
@@ -123,7 +135,3 @@ numerical value of the row (starting from 1) that has the dates. I could return
 Some cells have shift time symbols (e.g. D, E, N). But sometimes you can find all
 kinds of symbols there, so you need to be prepared for this.
 
-Names are not consistent either. Usually its "FIRSTNAME SURNAME", but sometimes
-there are some labels following the name. E.g. John Doe - UKSRMO, Jane Doe (SRMO)
-You need to recognise strings as names while making reservations for these
-inconsistencies.
