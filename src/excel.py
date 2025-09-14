@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from openpyxl import load_workbook
+from openpyxl.cell.cell import Cell  # for type checker
 from openpyxl.worksheet.worksheet import Worksheet  # for type checker
 
 
@@ -24,6 +25,7 @@ def find_date_row(sheet: Worksheet) -> int:
     for row in sheet.iter_rows():
         date_count = 0
         for cell in row:
+            assert isinstance(cell, Cell)  # Dbg
             if cell.is_date:
                 date_count += 1
                 if date_count == MIN_DATE_COLUMNS_IN_ROW and cell.row:
