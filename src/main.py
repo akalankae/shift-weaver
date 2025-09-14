@@ -8,15 +8,22 @@
 #
 
 import sys
-
-from PyQt6.QtWidgets import QApplication
-
-from gui import LoginWindow, UploadWindow, NameSelectWindow
-from excel import find_date_row, find_name_column, filter_names_dict
+from datetime import datetime
 
 from openpyxl import load_workbook
+from openpyxl.utils import column_index_from_string
+from PyQt6.QtWidgets import QApplication
 
-userdata: dict[str, str] = dict()  # username, password, roster_type, roster_path
+from excel import filter_names_dict, find_date_row, find_name_column
+from gui import LoginWindow, NameSelectWindow, UploadWindow
+
+userdata: dict[str, str] = dict(
+    username="",  # icloud login name (email)
+    password="",  # icloud calendar server password
+    roster_type="",  # type of roster: term / week
+    roster_path="",  # path to roster excel file
+    name_in_roster="",  # name of the user in the roster
+)
 
 # Get user credentials [LoginWindow]
 app = QApplication(sys.argv)
@@ -39,17 +46,22 @@ if roster_type == "term":
         sys.stderr.write(f"Could nof find roster: {roster_path}")
         sys.exit(1)
     print(f"Opening roster: {roster_path}")
-    wb = load_workbook(roster_path)
-    if not wb.active:
+    wb = load_workbook(roster_path, data_only=True)
+    worksheet = wb.active
+    if not worksheet:
         sys.stderr.write("No Active Worksheet\n")
         sys.exit(1)
-    dates_row = find_date_row(wb.active)
-    names_col = find_name_column(wb.active)
+    try:
+        dates_row: int = find_date_row(worksheet)
+    except AssertionError as err:
+        sys.stderr.write(f"{err}\n")
+        sys.exit(2)
+    names_col: str = find_name_column(worksheet)
     if not names_col:
         sys.stderr.write("Cannot find names column\n")
         sys.exit(1)
     possible_names: dict[str, int] = {
-        cell.value: cell.row for cell in wb.active[names_col] if cell.data_type == "s"
+        cell.value: cell.row for cell in worksheet[names_col] if cell.data_type == "s"
     }
     names = filter_names_dict(possible_names)
 
@@ -72,13 +84,37 @@ if roster_type == "term":
     print(f"Roster: {roster_path}")
     print(f"Dates row: {dates_row}")
     print(f"Names col: {names_col}")
+
+    # Dates of term start immediately after the column with names
+    start_col = column_index_from_string(names_col)
+    dates = [cell.value for cell in worksheet[dates_row][start_col:]]
     name_in_roster = userdata.get("name_in_roster")
+    if not name_in_roster:
+        sys.stderr.write(f"Name {name_in_roster} was not found.\n")
+        sys.exit(1)
+    user_row = names.get(name_in_roster)
+    if not user_row:
+        sys.stderr.write(f"User row: {user_row} for {name_in_roster} is invalid\n")
+        sys.exit(1)
+
     print(f"User's name in roster: {name_in_roster}")
     if name_in_roster:
         print(f"User's row in roster: {names.get(name_in_roster)}")
     else:
         print("User's name was not found in roster")
 
+    shift_symbols = [cell.value for cell in worksheet[user_row][start_col:]]
+    print(f"Found {len(dates)} dates.")
+    print(f"Found {len(shift_symbols)} shifts.")
+
+    for dt, shift_symbol in zip(dates, shift_symbols):
+        if isinstance(dt, datetime) and (
+            shift_symbol
+            and isinstance(shift_symbol, str)
+            and (shift_symbol := shift_symbol.strip())
+            and shift_symbol.upper() not in ("OFF")
+        ):
+            print(f"{dt.date()} {shift_symbol}")
 
 
 # Get a list of shifts in the roster for the user
