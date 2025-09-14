@@ -55,9 +55,19 @@ def find_name_column(sheet: Worksheet) -> str | None:
 
 
 # Filter out list of possible names leaving only the full names
-def filter_names(strings: list[str]) -> list[str]:
+def filter_names_dict(name_to_row: dict[str, int]) -> dict[str, int]:
     """
-    Filter out names from a list of possible names.
+    Filter out names from a list of possible names. List is from keys of the
+    input dictionary.
+
+    Parameters:
+        - names_to_row: dict (possible name -> row number in roster)
+    Return value:
+        - dict with same format as input dict
+        - name -> row number in roster
+        - if multiple names found in same row each are mapped to same
+          row number
+
     Names have following recognizable properties:
     - Has First name and last name
     - May/may not have a middle name
@@ -69,13 +79,14 @@ def filter_names(strings: list[str]) -> list[str]:
     NAME_PART_PATTERN = r"\b(?:[A-Z](?:[a-z]+|[-\'][A-Z][a-z]*)+)\b"
     FULLNAME_PATTERN = rf"(?:{NAME_PART_PATTERN}\s+){{1,}}{NAME_PART_PATTERN}"
     regex = re.compile(FULLNAME_PATTERN)
-    names: list[str] = []
-    for string in strings:
+    results: dict[str, int] = {}
+    for string, row in name_to_row.items():
         matches = regex.finditer(string)
         fullnames = [match.group() for match in matches]
         if len(fullnames) > 0:
-            names.extend(fullnames)
-    return names
+            for fullname in fullnames:
+                results[fullname] = row
+    return results
 
 
 if __name__ == "__main__":
