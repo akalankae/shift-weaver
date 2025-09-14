@@ -54,6 +54,30 @@ def find_name_column(sheet: Worksheet) -> str | None:
     return column_letter
 
 
+# Filter out list of possible names leaving only the full names
+def filter_names(strings: list[str]) -> list[str]:
+    """
+    Filter out names from a list of possible names.
+    Names have following recognizable properties:
+    - Has First name and last name
+    - May/may not have a middle name
+    - Names are separated by one/more spaces
+    - Each name (part) starts with an uppercase letter
+    - Subsequent letters are lowercase or hyphen or single-quote
+    - Letter following hyphen or single-quote is uppercase
+    """
+    NAME_PART_PATTERN = r"\b(?:[A-Z](?:[a-z]+|[-\'][A-Z][a-z]*)+)\b"
+    FULLNAME_PATTERN = rf"(?:{NAME_PART_PATTERN}\s+){{1,}}{NAME_PART_PATTERN}"
+    regex = re.compile(FULLNAME_PATTERN)
+    names: list[str] = []
+    for string in strings:
+        matches = regex.finditer(string)
+        fullnames = [match.group() for match in matches]
+        if len(fullnames) > 0:
+            names.extend(fullnames)
+    return names
+
+
 if __name__ == "__main__":
     from time import perf_counter
 
