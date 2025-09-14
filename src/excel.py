@@ -35,7 +35,7 @@ def find_date_row(sheet: Worksheet) -> int:
 
 
 # Find which column in the roster has the names
-def find_name_column(sheet: Worksheet) -> str | None:
+def find_name_column(sheet: Worksheet) -> str:
     """
     Determine which column has the names of the people rostered.
     REQUIRED_MATCH_COUNT is the number of matches for names to decide that the
@@ -43,7 +43,7 @@ def find_name_column(sheet: Worksheet) -> str | None:
     """
     REQUIRED_MATCH_COUNT = 6
     regex = re.compile(r"\b[A-Z][a-z'-]+\s+[A-Z][a-z'-]+\b")
-    column_letter = None
+    column_letter = ""
     for column in sheet.iter_cols():
         match_count = 0
         for cell in column:
