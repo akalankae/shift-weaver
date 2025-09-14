@@ -134,4 +134,5 @@ numerical value of the row (starting from 1) that has the dates. I could return
 
 Some cells have shift time symbols (e.g. D, E, N). But sometimes you can find all
 kinds of symbols there, so you need to be prepared for this.
-
+If no shift fall on a date it usually has `None` value. But sometimes this is
+given as "OFF" or empty string or even as a string with only whitespace.
