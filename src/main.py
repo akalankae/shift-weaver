@@ -38,7 +38,7 @@ app.exec()
 # Get user to select his/her name in the roster [NameSelectWindow]
 
 
-# Get a list of shifts in the roster
+# Get a list of shifts in the roster for the user
 
 
 # Compare and contrast the shifts that were found in current calendar (if there
