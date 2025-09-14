@@ -210,6 +210,8 @@ class UploadWindow(QWidget):
         """
         print(f"Roster type: {self.roster_type}")
         print(f"Roster file: {self.roster_path}")
+        self.userdata["roster_type"] = self.roster_type
+        self.userdata["roster_path"] = str(self.roster_path)
         self.close()
 
 
@@ -219,8 +221,10 @@ class NameSelectWindow(QWidget):
     User selects his/her name in the roster.
     """
 
-    def __init__(self, name_list: list[str]):
+    def __init__(self, name_list: list[str], user_data: dict[str, str | int | None]):
         super().__init__()
+        self.user_data = user_data
+
         self.setWindowTitle("Select Your Name")
         self.setMinimumWidth(360)
 
@@ -230,11 +234,14 @@ class NameSelectWindow(QWidget):
         back_btn = QPushButton("Go Back", self)
         enter_btn = QPushButton("Enter", self)
         enter_btn.setMinimumWidth(160)
+        enter_btn.clicked.connect(self.enter)
+        enter_btn.setEnabled(False)
         quit_btn = QPushButton("Quit", self)
         quit_btn.setMinimumWidth(160)
-        names_cbox = QComboBox(self)
-        names_cbox.addItems(name_list)
-        names_cbox.setMaxVisibleItems(12)
+        self.names_cbox = QComboBox(self)
+        self.names_cbox.addItems(name_list)
+        self.names_cbox.activated.connect(lambda: enter_btn.setEnabled(True))
+        self.names_cbox.setMaxVisibleItems(12)
         save_creds_cb = QCheckBox("Remember Me", self)
 
         # visually seperate action buttons from form
@@ -253,10 +260,14 @@ class NameSelectWindow(QWidget):
         root_layout = QVBoxLayout(self)
         root_layout.addWidget(back_btn, 0, Qt.AlignmentFlag.AlignLeft)
         root_layout.addWidget(heading_lbl, 0, Qt.AlignmentFlag.AlignHCenter)
-        root_layout.addWidget(names_cbox, 0, Qt.AlignmentFlag.AlignHCenter)
+        root_layout.addWidget(self.names_cbox, 0, Qt.AlignmentFlag.AlignHCenter)
         root_layout.addWidget(save_creds_cb, 0, Qt.AlignmentFlag.AlignHCenter)
         root_layout.addWidget(separator)
         root_layout.addLayout(btn_layout)
+
+    def enter(self):
+        self.user_data["name_in_roster"] = self.names_cbox.currentText()
+        self.close()
 
 
 if __name__ == "__main__":
@@ -284,7 +295,7 @@ if __name__ == "__main__":
             "Anne Hathaway",
             "Patrick Jane",
         ]
-    win_3 = NameSelectWindow(name_list)
+    win_3 = NameSelectWindow(name_list, data)
     win_3.show()
 
     sys.exit(app.exec())
