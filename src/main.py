@@ -103,11 +103,11 @@ if roster_type == "term":
     else:
         print("User's name was not found in roster")
 
-    shift_symbols = [cell.value for cell in worksheet[user_row][start_col:]]
+    shift_values = [cell.value for cell in worksheet[user_row][start_col:]]
     print(f"Found {len(dates)} dates.")
-    print(f"Found {len(shift_symbols)} shifts.")
+    print(f"Found {len(shift_values)} shifts.")
 
-    for dt, shift_symbol in zip(dates, shift_symbols):
+    for dt, shift_symbol in zip(dates, shift_values):
         if isinstance(dt, datetime) and (
             shift_symbol
             and isinstance(shift_symbol, str)
