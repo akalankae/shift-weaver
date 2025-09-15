@@ -8,7 +8,7 @@
 #
 
 import sys
-from datetime import datetime
+from datetime import date, datetime
 
 from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string
@@ -107,6 +107,7 @@ if roster_type == "term":
     print(f"Found {len(dates)} dates.")
     print(f"Found {len(shift_values)} shifts.")
 
+    shifts: dict[date, str] = {} # Dict of shifts for the term: date -> shift
     for dt, shift_symbol in zip(dates, shift_values):
         if isinstance(dt, datetime) and (
             shift_symbol
@@ -114,7 +115,22 @@ if roster_type == "term":
             and (shift_symbol := shift_symbol.strip())
             and shift_symbol.upper() not in ("OFF")
         ):
-            print(f"{dt.date()} {shift_symbol}")
+            shifts[dt.date()] = shift_symbol
+
+    shift_symbols: set[str] = set()
+    shift_dates: set[date] = set()
+    for shift_date, shift_symbol in shifts.items():
+        shift_dates.add(shift_date)
+        shift_symbols.add(shift_symbol)
+
+    # Show the shifts: dates and symbols
+    print("Following shift symbols were found:")
+    for symbol in shift_symbols:
+        print(f"* {symbol}")
+
+    print("\nYou have work on following dates:")
+    for i, shift_date in enumerate(sorted(shift_dates), 1):
+        print(f"{i:>3d} {shift_date}")
 
 
 # Get a list of shifts in the roster for the user
