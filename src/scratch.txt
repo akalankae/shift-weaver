@@ -135,4 +135,23 @@ numerical value of the row (starting from 1) that has the dates. I could return
 Some cells have shift time symbols (e.g. D, E, N). But sometimes you can find all
 kinds of symbols there, so you need to be prepared for this.
 If no shift fall on a date it usually has `None` value. But sometimes this is
-given as "OFF" or empty string or even as a string with only whitespace.
+given as "OFF" or empty string or even as a string with only white space.
+
+Some shift labels in the roster are inexplicable. Whereas things like "D" for
+day and "N" for night are known, it may contain strange things like "D - sick"
+to mean sick leave for a day shift. The best approach to handle this I think is
+to show them to the user and get them to enter how to interpret them. We can also
+keep a record of how the user wanted them to be represented as, so that we can
+recognize them later.
+
+Calendar
+--------
+The user should have the option to select which calendar to enter his/her shifts
+into. But we can use a default calendar, like "Roster".
+
+Events
+------
+Some times there are labels in the roster for leave or off days. For example
+"OFF" or "AL" (for academic leave). These do not need to be entered in the
+roster for the user, so we can give the option of choosing which labels the user
+wants to ignore.
