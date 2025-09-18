@@ -116,6 +116,8 @@ if roster_type == "term":
         print("User's name was not found in roster")
 
     shift_values = [cell.value for cell in worksheet[user_row][start_col:]]
+
+    # Report back about number of working days and number of shift
     print(f"Found {len(dates)} dates.")
     print(f"Found {len(shift_values)} shifts.")
 
@@ -144,7 +146,7 @@ if roster_type == "term":
     for i, shift_date in enumerate(sorted(shift_dates), 1):
         print(f"{i:>3d} {shift_date}")
 
-    # Try to make sense of the symbols by looking them up
+    # Try to make sense of the shift symbols by looking them up in our records
     new_labels: dict[str, str] = {}
     try:
         with open("data/shifts.dat", "rb") as f:
@@ -155,6 +157,8 @@ if roster_type == "term":
     else:
         for label in shift_labels:
             meaning = known_shift_labels.get(label)
+            # If the label is not in the records, prompt the user on how it
+            # should be interpreted and then save this for future use.
             if not meaning:
                 print(f'"{label}" is unknown!')
                 meaning = input(f'Enter a label for "{label}"\n\t>> ').rstrip()
