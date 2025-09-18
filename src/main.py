@@ -9,6 +9,7 @@
 
 import sys
 from datetime import date, datetime
+import pickle
 
 from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string
@@ -23,6 +24,17 @@ userdata: dict[str, str] = dict(
     roster_type="",  # type of roster: term / week
     roster_path="",  # path to roster excel file
     name_in_roster="",  # name of the user in the roster
+)
+
+known_shift_labels: dict[str, str] = dict(
+    D="Day",
+    MF="Morning Float",
+    F="Float",
+    E="Evening",
+    N="Night",
+    ADO="Allocated Day-Off",
+    T="Teaching Day",
+    SR="Sick Relief",
 )
 
 # Get user credentials [LoginWindow]
@@ -107,7 +119,7 @@ if roster_type == "term":
     print(f"Found {len(dates)} dates.")
     print(f"Found {len(shift_values)} shifts.")
 
-    shifts: dict[date, str] = {} # Dict of shifts for the term: date -> shift
+    shifts: dict[date, str] = {}  # Dict of shifts for the term: date -> shift
     for dt, shift_symbol in zip(dates, shift_values):
         if isinstance(dt, datetime) and (
             shift_symbol
@@ -117,20 +129,50 @@ if roster_type == "term":
         ):
             shifts[dt.date()] = shift_symbol
 
-    shift_symbols: set[str] = set()
+    shift_labels: set[str] = set()
     shift_dates: set[date] = set()
     for shift_date, shift_symbol in shifts.items():
         shift_dates.add(shift_date)
-        shift_symbols.add(shift_symbol)
+        shift_labels.add(shift_symbol)
 
     # Show the shifts: dates and symbols
     print("Following shift symbols were found:")
-    for symbol in shift_symbols:
-        print(f"* {symbol}")
+    for label in shift_labels:
+        print(f"* {label}")
 
     print("\nYou have work on following dates:")
     for i, shift_date in enumerate(sorted(shift_dates), 1):
         print(f"{i:>3d} {shift_date}")
+
+    # Try to make sense of the symbols by looking them up
+    new_labels: dict[str, str] = {}
+    try:
+        with open("data/shifts.dat", "rb") as f:
+            known_shift_labels.update(pickle.load(f))
+    except IOError as err:
+        sys.stderr.write("Cannot find previously saved shift symbols for analysis!\n")
+        sys.stderr.write(f"{err}\n")
+    else:
+        for label in shift_labels:
+            meaning = known_shift_labels.get(label)
+            if not meaning:
+                print(f'"{label}" is unknown!')
+                meaning = input(f'Enter a label for "{label}"\n\t>> ').rstrip()
+                new_labels[label] = meaning
+            else:
+                print(f"{label}: {meaning}")
+        if new_labels:
+            known_shift_labels.update(new_labels)
+            with open("data/shifts.dat", "wb") as f:
+                try:
+                    pickle.dump(known_shift_labels, f)
+                except IOError as err:
+                    sys.stderr.write(f"Could not save newly added labels.\n{err}\n")
+
+        print("\n{}   {}".format("Date of Shift".center(15), "Shift".center(15)))
+        for shift_date, shift_label in shifts.items():
+            date_str = shift_date.strftime("%d %b %Y")
+            print(f"{date_str:>15s} | {known_shift_labels.get(shift_label):<12s}")
 
 
 # Get a list of shifts in the roster for the user
