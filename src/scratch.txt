@@ -144,6 +144,10 @@ to show them to the user and get them to enter how to interpret them. We can als
 keep a record of how the user wanted them to be represented as, so that we can
 recognize them later.
 
+Show the user the known labels and their meanings and give them a chance to
+modify them if needed. Important in case user entered a wrong meaning for a
+label on a previous run.
+
 Calendar
 --------
 The user should have the option to select which calendar to enter his/her shifts
