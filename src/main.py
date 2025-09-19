@@ -179,8 +179,6 @@ if roster_type == "term":
             print(f"{date_str:>15s} | {known_shift_labels.get(shift_label):<12s}")
 
 
-# Get a list of shifts in the roster for the user
-
 
 # Compare and contrast the shifts that were found in current calendar (if there
 # are any) against shifts in the roster
