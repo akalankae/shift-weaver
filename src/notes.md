@@ -31,6 +31,8 @@ Save created calendar
 ## caldav.collection.Calendar.save_event() -> caldav.calendarobjectresource.Event
 ## caldav.collection.Calendar.save_object(objclass=caldav.calendarobjectresource.Event) -> caldav.calendarobjectresource.Event
 
+This is the way to add a new object (event, todo or journal) to the calendar.
+
 Similar:
 - caldav.collection.Calendar.save_journal()
 - caldav.collection.Calendar.save_todo()
@@ -62,17 +64,33 @@ Parameters:
 ## caldav.calendarobjectresource.Event.save() method
 
 Save event in the CalDAV server. If it is an existing event grabbed from the server, it is modified.
+When you take the event data with property access: event_data = event.component it is de-coupled from
+the data in CalDAV server. To modify it you have to modify it to the new desired value, then assign to
+the original component.
+
+```
+event_data = event.component        # same as `event.icalendar_component`
+start_date = event_data.start
+start_date = datetime.datetime(...)
+event.component.start = start_date
+event.save()
+```
 
 Parameters:
 - all_recurrences: bool - if True edit the full series of events
+
+## caldav.calendarobjectresource.Event.delete() method
+
+Delete an event from the calendar. Much like Event.save().
 
 ## caldav.calendarobjectresource.Event.data (string in icalendar format)
 
 ## caldav.calendarobjectresource.Event.icalendar_component [data attribute] (icalendar.ical.Event)
 ## caldav.calendarobjectresource.Event.component [data attribute] (icalendar.ical.Event)
 
-Both of these are identical.
-You can access icalendar parts as attributes of an instance (with dot) or keys of a dictionary (with square brackets).
+Both of these are identical. You can access some properties as attributes of an instance (with dot), for example `start`
+as instance.start, or keys of a dictionary (with square brackets), for example `summary` as instance["summary"].
+Assigning new values to them and saving modifies it on the server as well.
 
 ## caldav.calendarobjectresource.Event.icalendar_instance [data attribute] (icalendar.ical.Calendar)
 
