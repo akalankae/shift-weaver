@@ -159,3 +159,47 @@ Some times there are labels in the roster for leave or off days. For example
 "OFF" or "AL" (for academic leave). These do not need to be entered in the
 roster for the user, so we can give the option of choosing which labels the user
 wants to ignore.
+
+NOTE: DESCRIPTION property of a VEVENT appears on icalendar app under the
+heading "notes".
+
+How to detect events as shifts?
+-------------------------------
+Approach #1: Use a separate calendar
+
+Approach #2: Use UID and/or other properties
+- UID (Unique ID) - standard property
+Has to be deterministic.
+This is the most reliable way to detect shifts by scanning the calendar.
+We can use this to scan the calendar and detect identical shifts, so that we
+don't have to change them.
+
+e.g.
+[format]    Application Namespace:Employer ID:Employee ID:DAY OF SHIFT
+[example]   ShiftWeaver:SWSLHD:60316064:20230820T080000Z
+[MD5]       d36632223238ea07c7ba4e99a29b909e
+
+- X-PROPERTIES - non-standard custom properties prefixed with "X-"
+e.g.
+X-SHIFT-ID:20230820/DAY
+X-EMPLOYEE-ID:SWSLHD
+X-PUBLISHED-BY:ShiftWeaver/v1.0
+
+- CATEGORIES - standard
+e.g.
+CATEGORIES:Work Shift,EMPLOYMENT
+
+- DESCRIPTION/COMMENT
+
+UUID
+----
+RFC 4122 recommends using SHA1 as hash algorithm.
+This is how you generate the UID:
+- It has 2 parts: (1) Namespace string (2) Shift data string
+- Namespace string is used to generate a namespace UUID and then hard-code it
+  for use.
+- This is done with uuid.uuid1() or uuid.uuid4() (but latter is better)
+- Use uuid.UUID(namespace_string) to generate namespace UUID (NAMESPACE_UUID)
+- Copy and paste into the application for use by all users.
+- Generate full UUID with uuid.uuid5(NAMESPACE_UUID, shift_string)
+- This will get a RFC 4122 compliant UUID.
