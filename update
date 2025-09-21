@@ -1,0 +1,14 @@
+#!/bin/bash
+
+OUDATED_PACKAGES=$(pip list --outdated --format=json | jq --raw-output '.[].name')
+
+if [ ${#OUTDATED_PACKAGES[@]} -eq 0 ]
+then
+    echo "All packages are up-to-date"
+else
+    echo "${#OUTDATED_PACKAGES[@]} packages are out-dated"
+    for pkg in ${OUTDATED_PACKAGES[@]}
+    do
+        echo $pkg
+    done
+fi
