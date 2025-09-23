@@ -8,15 +8,25 @@
 #
 
 import sys
-from datetime import date, datetime
-import pickle
+from datetime import datetime
 
+from caldav.davclient import get_davclient
+from caldav.lib.error import AuthorizationError, NotFoundError, PutError
 from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string
 from PyQt6.QtWidgets import QApplication
 
 from excel import filter_names_dict, find_date_row, find_name_column
 from gui import LoginWindow, NameSelectWindow, UploadWindow
+from shift import Shift
+from calendar_handler import get_shifts_from_calendar
+
+
+# Debug to error file
+from pathlib import Path
+
+ERROR_FILE = "data/errors.log"
+
 
 userdata: dict[str, str] = dict(
     username="",  # icloud login name (email)
@@ -109,79 +119,165 @@ if roster_type == "term":
         sys.stderr.write(f"User row: {user_row} for {name_in_roster} is invalid\n")
         sys.exit(1)
 
-    print(f"User's name in roster: {name_in_roster}")
-    if name_in_roster:
-        print(f"User's row in roster: {names.get(name_in_roster)}")
-    else:
-        print("User's name was not found in roster")
+    print(f"User {name_in_roster} is at row number {user_row}")  # Dbg
 
+    # Get the slice of the user's row containing the dates
     shift_values = [cell.value for cell in worksheet[user_row][start_col:]]
 
-    # Report back about number of working days and number of shift
-    print(f"Found {len(dates)} dates.")
-    print(f"Found {len(shift_values)} shifts.")
+    # Make sure number of shifts is equal to number of dates with shifts.
+    print(f"Dates: {len(dates)} | Shifts: {len(shift_values)}")  # Dbg
+    assert len(dates) == len(shift_values)  # Dbg
 
-    shifts: dict[date, str] = {}  # Dict of shifts for the term: date -> shift
-    for dt, shift_symbol in zip(dates, shift_values):
+    # Get first and last dates of the term. This is required to search for what
+    # already exists in the CalDAV server.
+    filtered_dates: list[datetime] = list(filter(None, dates))
+    min_date = min(filtered_dates)
+    max_date = max(filtered_dates)
+    print(f"Term from: {min_date.date()} to {max_date.date()}")
+
+    # Zip dates (datetime objects) and labels in roster to make a dict and
+    # create icalendar Events (`Shift`) from data for each shift then add them
+    # to a list
+    shifts: list[Shift] = []  # List of shifts for the term
+    for dt, shift_label in zip(dates, shift_values):
         if isinstance(dt, datetime) and (
-            shift_symbol
-            and isinstance(shift_symbol, str)
-            and (shift_symbol := shift_symbol.strip())
-            and shift_symbol.upper() not in ("OFF")
+            shift_label  # not None
+            and isinstance(shift_label, str)  # a string
+            and (shift_label := shift_label.strip())  # not empty/whitespace only
+            and shift_label.upper() not in ("OFF")  # `OFF` days are just empty
         ):
-            shifts[dt.date()] = shift_symbol
+            shifts.append(Shift(dt.date(), shift_label))
 
-    shift_labels: set[str] = set()
-    shift_dates: set[date] = set()
-    for shift_date, shift_symbol in shifts.items():
-        shift_dates.add(shift_date)
-        shift_labels.add(shift_symbol)
+    # # -------------------- NEED TO FIX BEYOND THIS POINT! ---------------------
+    # # Try to make sense of the shift symbols by looking them up in our records
+    # new_labels: dict[str, str] = {}
+    # try:
+    #     with open("data/shifts.dat", "rb") as f:
+    #         known_shift_labels.update(pickle.load(f))
+    # except IOError as err:
+    #     sys.stderr.write("Cannot find previously saved shift symbols for analysis!\n")
+    #     sys.stderr.write(f"{err}\n")
+    # else:
+    #     for label in shift_labels:
+    #         meaning = known_shift_labels.get(label)
+    #         # If the label is not in the records, prompt the user on how it
+    #         # should be interpreted and then save this for future use.
+    #         if not meaning:
+    #             print(f'"{label}" is unknown!')
+    #             meaning = input(f'Enter a label for "{label}"\n\t>> ').rstrip()
+    #             new_labels[label] = meaning
+    #         else:
+    #             print(f"{label}: {meaning}")
+    #     if new_labels:
+    #         known_shift_labels.update(new_labels)
+    #         with open("data/shifts.dat", "wb") as f:
+    #             try:
+    #                 pickle.dump(known_shift_labels, f)
+    #             except IOError as err:
+    #                 sys.stderr.write(f"Could not save newly added labels.\n{err}\n")
+    #
+    #     print("\n{}   {}".format("Date of Shift".center(15), "Shift".center(15)))
+    #     for shift_date, shift_label in shifts.items():
+    #         date_str = shift_date.strftime("%d %b %Y")
+    #         print(f"{date_str:>15s} | {known_shift_labels.get(shift_label):<12s}")
 
-    # Show the shifts: dates and symbols
-    print("Following shift symbols were found:")
-    for label in shift_labels:
-        print(f"* {label}")
+    # # -------------------- NEED TO FIX UPTO THIS POINT! ---------------------
 
-    print("\nYou have work on following dates:")
-    for i, shift_date in enumerate(sorted(shift_dates), 1):
-        print(f"{i:>3d} {shift_date}")
-
-    # Try to make sense of the shift symbols by looking them up in our records
-    new_labels: dict[str, str] = {}
-    try:
-        with open("data/shifts.dat", "rb") as f:
-            known_shift_labels.update(pickle.load(f))
-    except IOError as err:
-        sys.stderr.write("Cannot find previously saved shift symbols for analysis!\n")
-        sys.stderr.write(f"{err}\n")
-    else:
-        for label in shift_labels:
-            meaning = known_shift_labels.get(label)
-            # If the label is not in the records, prompt the user on how it
-            # should be interpreted and then save this for future use.
-            if not meaning:
-                print(f'"{label}" is unknown!')
-                meaning = input(f'Enter a label for "{label}"\n\t>> ').rstrip()
-                new_labels[label] = meaning
-            else:
-                print(f"{label}: {meaning}")
-        if new_labels:
-            known_shift_labels.update(new_labels)
-            with open("data/shifts.dat", "wb") as f:
-                try:
-                    pickle.dump(known_shift_labels, f)
-                except IOError as err:
-                    sys.stderr.write(f"Could not save newly added labels.\n{err}\n")
-
-        print("\n{}   {}".format("Date of Shift".center(15), "Shift".center(15)))
-        for shift_date, shift_label in shifts.items():
-            date_str = shift_date.strftime("%d %b %Y")
-            print(f"{date_str:>15s} | {known_shift_labels.get(shift_label):<12s}")
-
+    # # Create a new calendar for testing and add shift (events) to it and write
+    # # back to a local file
+    # my_calendar = Calendar()
+    # my_calendar.calendar_name = "Roster"
+    # my_calendar.uid = str(uuid4())
+    # my_calendar.categories = ["Work", "Shift"]
+    # for shift in shifts:
+    #     my_calendar.add_component(shift)
+    # with Path("data/my_calendar.ics").open("wb") as f:
+    #     f.write(my_calendar.to_ical())
 
 
 # Compare and contrast the shifts that were found in current calendar (if there
 # are any) against shifts in the roster
+if roster_type == "term":
+    error_file = Path(ERROR_FILE).open("a+b")
+    # Get shifts for the term
+    CALENDAR_NAME = "Test Calendar"
+    try:
+        URL = "https://caldav.icloud.com/"
+        # Dbg - PutError at '404 not found
+        print(
+            f"Username: {userdata['username']} | Password: {userdata['password']} | URL: {URL}"
+        )
+        with get_davclient(
+            url=URL,
+            username=userdata["username"],
+            password=userdata["password"],
+        ) as davclient:
+            principal = davclient.principal()
+            try:
+                target_cal = principal.calendar(name=CALENDAR_NAME)
+            except NotFoundError:
+                print(f"Could not find calendar: {CALENDAR_NAME}")
+                target_cal = principal.make_calendar(name=CALENDAR_NAME)
+                print(f"Created new calendar: {CALENDAR_NAME}")
+            else:
+                print(f"Created new calendar: {CALENDAR_NAME}")
+    except AuthorizationError as err:
+        sys.stderr.write(f"Issue with authorization: {CALENDAR_NAME}\n{err}\n")
+        sys.exit(1)
+    else:
+        if target_cal is not None:
+            existing_shifts = get_shifts_from_calendar(
+                target_cal, min_date.date(), max_date.date()
+            )
+            print(f"Found {len(existing_shifts)} shifts")
+            if len(existing_shifts) == 0:
+                print(f"Inserting {len(shifts)} shifts to calendar: {CALENDAR_NAME}")
+                for shift in shifts:
+                    try:
+                        ical_data = shift.to_ical()
+                        target_cal.save_event(ical=ical_data)
+                    except Exception as err:
+                        print(f"ical_data (type): {type(ical_data)}")
+                        error_file.write(f"{err}\n\n")
+                        error_file.write(f"{ical_data}\n")
+            else:
+                new_shifts: list[Shift] = []
+                for shift in shifts:
+                    #     if shift not in found_shifts:
+                    #         new_shifts.append(shift)
+                    # Below code is commented because `in` seem to work
+                    # (checkout Shift.__eq__() method)
+                    for existing_shift in existing_shifts:
+                        if shift == existing_shift:
+                            break
+                    else:
+                        new_shifts.append(shift)
+                for i, shift in enumerate(new_shifts, 1):
+                    # error_file = Path(ERROR_FILE).open("wb")
+                    try:
+                        ical_data = shift.to_ical()
+                        _code = target_cal.save_event(
+                            ical=ical_data, no_overwrite=False, no_create=False
+                        )
+                    except PutError as err:
+                        sys.stderr.write(
+                            f"Failed to insert {shift.get('summary')}-{shift.uid} to calendar\n"
+                        )
+                        sys.stderr.write(f"{err}\n")
+                        sys.stderr.write(ical_data.decode("utf8"))
+                        sys.stderr.write("\n")
+                    else:
+                        print(f"Return Code: {_code}")
+    #                     finally:
+    #                         print(f"""
+    #         # New Shift #{i}
+    #         APPLICATION: {shift.get("x-published-by", "<Not Found>")}
+    #         Shift Summary: {shift.get("summary", "<Not Found>")}\tShift UID: {shift.uid}
+    #         From: {shift.start}\tTo  : {shift.end}
+    #         =====================================================================================
+    # """)
+    # error_file.close()
+    error_file.close()
 
 
 # Show a summary of changes (if any) from shifts found in current calendar

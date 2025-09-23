@@ -3,15 +3,19 @@
 
 import uuid
 from datetime import date, datetime, time, timedelta
-from typing import final
+from typing import final, override
 from zoneinfo import ZoneInfo
 
 from icalendar import Event
 
+APP_VERSION = "0.1"
+APP_NAME = "ShiftWeaver"
 _MY_TIMEZONE = ZoneInfo("Australia/Sydney")
 _APP_NAMESPACE = uuid.UUID("48f80ff6-3ddd-4b70-9ad0-24459b3219bc")
 _EMPLOYEE_ID = "60316064"  # My SWSLHD ID
 _EMPLOYER_NAME = "SWSLHD"  # Local Health District
+
+APP_DATA = {"name": APP_NAME, "version": APP_VERSION}
 
 
 @final
@@ -40,27 +44,33 @@ class Shift(Event):
         N=time(22, 30, 0, tzinfo=_MY_TIMEZONE),  # 10.30 PM
     )
 
-    def __init__(self, shift_date: datetime | date, shift_label: str, *args, **kwargs):
+    def __init__(self, shift_date: date, shift_label: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
         shift_label = shift_label.strip().upper()  # ? methods maybe unnecessary
-        if isinstance(shift_date, datetime):
-            shift_date = shift_date.date()
-        self.date = shift_date
+        # self.date = shift_date
 
+        # Shifts have a start time, others do not. So DTSTART property of shifts
+        # are parameters with DATE-TIME values. But all non-shifts' DTSTART
+        # property have DATE parameter values.
         if shift_label in __class__.SHIFT_START_TIMES:
             start_time = __class__.SHIFT_START_TIMES[shift_label]
-            shift_start = datetime.combine(self.date, start_time)
+            shift_start = datetime.combine(shift_date, start_time)
             self.add("dtstart", shift_start)
             self.add("duration", timedelta(hours=10))
         else:
-            self.add("dtstart", self.date) # Whole day event with no time-of-day
+            # Looks like icloud's caldav server doesn't support this
+            # This seem to raise PutError '404 not found
+            # self.add("dtstart", shift_date)  # Whole day event with no time-of-day
+            self.add("dtstart", datetime.combine(shift_date, time(0, 0, 0)))
+            self.add("duration", timedelta(hours=24))
 
         shift_summary = __class__.LABEL_MEANING.get(shift_label, shift_label)
         self.add("summary", shift_summary)
         self.uid = self.__generate_uid()
         self.categories = ["Work", "Shift"]
-        self.add("class", "PRIVATE")
+        # self.add("class", "PRIVATE")
         self.sequence = 0  # increment this each time the shift is modified
+        self.add("x-published-by", f"{APP_NAME}/v{APP_VERSION}")
 
     def __generate_uid(self):
         """
@@ -79,6 +89,16 @@ class Shift(Event):
         deterministic_string = f"{_EMPLOYER_NAME}:{_EMPLOYEE_ID}:{shift_string}"
         uid = uuid.uuid5(_APP_NAMESPACE, deterministic_string)
         return str(uid)
+
+    @override
+    def __eq__(self, other: object)->bool:
+    # def __eq__(self, other: typing.Self)->bool:
+        """
+        This is used by `==` operation as well as `in` operation.
+        """
+        if not hasattr(other, "uid"):
+            raise TypeError(f'{other} does not have a "uid" attribute')
+        return self.uid == other.uid
 
 
 if __name__ == "__main__":
