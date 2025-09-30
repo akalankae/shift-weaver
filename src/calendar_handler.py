@@ -54,3 +54,34 @@ def get_shifts_from_calendar(calendar: Calendar, from_: date, to: date) -> list[
     for event in calendar.search(start=from_, end=to, expand=True, event=True):
         shifts.append(event.component)
     return shifts
+
+
+# Get the list of (names of) existing calendars from icloud
+# If credentials are incorrect raise `AuthorizationError`
+def get_calendar_list(username: str, password: str, url: str|None = None) -> list[str]:
+    calendar_list: list[str] = []
+    if url is None:
+        url = r"https://caldav.icloud.com/"
+    with get_davclient(url=url, username=username, password=password) as client:
+        try:
+            principal = client.principal()
+        except AuthorizationError as err:
+            sys.stderr.write(f"Username/password is incorrect: {err}\n")
+            raise err
+        else:
+            for cal in principal.calendars():
+                if cal and cal.name:
+                    calendar_list.append(cal.name)
+    return calendar_list
+
+if __name__ == '__main__':
+    username = "akalankae84@icloud.com"
+    password = "siqm-wprd-skeg-rqlx"
+    try:
+        existing_calendars = get_calendar_list(username, password)
+    except AuthorizationError:
+        print("Could not access iCloud server")
+    else:
+        print(f"Found {len(existing_calendars)} calendars")
+        for i, calendar in enumerate(existing_calendars, 1):
+            print(f"{i} {calendar}")
