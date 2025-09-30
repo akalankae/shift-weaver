@@ -251,7 +251,7 @@ class CalendarPickerWindow(QGroupBox):
         self.setLayout(self.form)
 
     def submit(self):
-        # Need to validate if it is a new calendar
+        # Need to validate if it is a new calendar - May be NOT !!
         pass
 
     def select_calendar_type(self, i):
