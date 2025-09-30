@@ -111,7 +111,11 @@ class LoginWindow(QGroupBox):
 
         self.password_entry = QLineEdit()
         self.password_entry.setPlaceholderText("******")
+        self.password_entry.setEchoMode(QLineEdit.EchoMode.Password)
         self.reveal_password_cb = QCheckBox("reveal password")
+        self.reveal_password_cb.checkStateChanged.connect(
+            self.toggle_password_visibility
+        )
 
         password_layout = QVBoxLayout()
         password_layout.addWidget(self.password_entry)
@@ -130,6 +134,13 @@ class LoginWindow(QGroupBox):
         self.form.addRow("Employee ID", self.emp_id_entry)
         self.form.addRow("Employer", self.employer_entry)
         self.form.addRow(self.submit_button)
+
+    def toggle_password_visibility(self, checkstate):
+        "Hide or reveal password"
+        if checkstate == Qt.CheckState.Checked:
+            self.password_entry.setEchoMode(QLineEdit.EchoMode.Normal)
+        else:
+            self.password_entry.setEchoMode(QLineEdit.EchoMode.Password)
 
     def read_user_configs(self):
         """
