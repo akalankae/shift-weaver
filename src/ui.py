@@ -181,14 +181,15 @@ class LoginWindow(QGroupBox):
         self.user_data["password"] = self.password_entry.text().strip()
         self.user_data["id"] = self.emp_id_entry.text().strip()
         self.user_data["employer"] = self.employer_entry.text().strip()
+        print(self.user_data)
         answer = QMessageBox.information(
             self,
             "User Credentials & Information",
             f"""<p>You Entered Following<p>
-            <p>Username: {self.user_data["username"]}<p>
-            <p>Password: {self.user_data["password"]}<p>
-            <p>Employee ID: {self.user_data["id"]}<p>
-            <p>Employer: {self.user_data["employer"]}<p>""",
+            * Username: {self.user_data['username']}<br>
+            * Password: {self.user_data['password']}<br>
+            * Employee ID: {self.user_data['id']}<br>
+            * Employer: {self.user_data['employer']}""",
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.No,
         )
 
