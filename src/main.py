@@ -16,7 +16,7 @@ from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string
 from PyQt6.QtWidgets import QApplication
 
-from excel import filter_names_dict, find_date_row, find_name_column
+from term_roster_parser import filter_names_dict, find_date_row, find_name_column
 from gui import LoginWindow, NameSelectWindow, UploadWindow
 from shift import Shift
 from calendar_handler import get_shifts_from_calendar
