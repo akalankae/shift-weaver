@@ -47,7 +47,7 @@ class Shift(Event):
     def __init__(self, shift_date: date, shift_label: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
         shift_label = shift_label.strip().upper()  # ? methods maybe unnecessary
-        # self.date = shift_date
+        self.date = shift_date  # offset-naive (self.start/self.end are not)
 
         # Shifts have a start time, others do not. So DTSTART property of shifts
         # are parameters with DATE-TIME values. But all non-shifts' DTSTART
