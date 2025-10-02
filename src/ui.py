@@ -2,31 +2,38 @@
 # ui.py
 # Graphical user interface for the program
 
-import sys
 import pickle
-from typing import final
+import sys
+from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
+from typing import final
 
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from caldav.davclient import get_davclient
+from caldav.lib.error import AuthorizationError, ConsistencyError, NotFoundError
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QVBoxLayout,
+    QAbstractButton,
     QButtonGroup,
-    QHBoxLayout,
-    QStackedWidget,
-    QPushButton,
+    QCheckBox,
     QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
-    QCheckBox,
-    QFormLayout,
+    QMainWindow,
     QMessageBox,
-    QGroupBox,
-    QFrame,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from caldav.lib.error import AuthorizationError
-from calendar_handler import get_calendar_list
+
+from calendar_handler import get_calendar_list, get_shifts_from_calendar
+from shift import Shift
+from term_roster_parser import TermRosterParser
 
 
 @final
@@ -42,15 +49,20 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setMinimumSize(QSize(400, 200))
         self.setWindowTitle(f"Shift Weaver v{__class__.VERSION}")
-        self.user_data = None
+
+        self.user_data: dict[str, str] | None = None  # credentials & user info
+        self.calendar_name: str | None = None  # user's preferred calendar
+        self.create_calendar: bool = False  # Whether to create a new calendar or not
+        self.roster_file: str | None = None  # path of roster file
+        self.roster_type: str | None = None  # "term" or "week" roster
+        self.parser: TermRosterParser | None = None  # parsed roster object
+        self.name_in_roster: str | None = None  # Name for the user in the roster
 
         self.login_window = LoginWindow(self.USER_DATA_DIR)
         self.login_window.login_success.connect(self.handle_login)
 
         self.calendar_picker_window = None
-
         self.roster_uploader_window = None
-
         self.name_selector_window = None
 
         self.root = QStackedWidget()
@@ -59,6 +71,14 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.root)
 
     def handle_login(self, data: dict[str, str]):
+        """
+        After user submits the user credentials (and other information) in Login
+        window, icloud's CalDAV server is queried with those credentials for a
+        list of existing calendars. Then they are displayed for user to select
+        one from. Or user can choose to create a new calendar.
+        This method creates the window for selecting a calendar and pops it onto
+        the main window.
+        """
         self.user_data = data
         calendars: list[str] = []
         # Do whatever is necessary to get the list of calendars from caldav
@@ -77,9 +97,166 @@ class MainWindow(QMainWindow):
             )
         else:
             self.calendar_picker_window = CalendarPickerWindow(calendars)
+            self.calendar_picker_window.calendar_found.connect(
+                self.get_preferred_calendar
+            )
 
             self.root.addWidget(self.calendar_picker_window)
             self.root.setCurrentWidget(self.calendar_picker_window)
+
+    def get_preferred_calendar(self, calendar_info: dict):
+        self.calendar_name = calendar_info["name"]  # string
+        self.create_calendar = calendar_info["new_calendar"]  # bool
+        self.upload_roster()
+
+    def upload_roster(self):
+        self.roster_upload_window = RosterUploaderWindow()
+        self.roster_upload_window.roster_received.connect(self.get_roster_info)
+
+        # connect to slot for NameSelectWindow
+
+        self.root.addWidget(self.roster_upload_window)
+        self.root.setCurrentWidget(self.roster_upload_window)
+
+    def get_roster_info(self, roster_info: dict[str, str]):
+        self.roster_type = roster_info["type"]
+        self.roster_file = roster_info["file"]
+
+        if self.roster_type == "term":
+            self.parse_term_roster()
+
+        elif self.roster_type == "week":
+            print("Not Implemented Yet")
+
+    def parse_term_roster(self):
+        if self.roster_file is None:
+            sys.stderr.write("None is not a valid roster file\n")
+            return
+
+        self.parser = TermRosterParser(self.roster_file)
+        names = self.parser.name_to_row.keys()
+
+        self.name_select_window = NameSelecterWindow(list(names))
+        self.name_select_window.name_selected.connect(self.update_calendar)
+
+        self.root.addWidget(self.name_select_window)
+        self.root.setCurrentWidget(self.name_select_window)
+
+    def update_calendar(self, username: str):
+        """
+        Update the relevant calendar in icloud.
+        """
+        if self.parser is None:
+            sys.stderr.write("Invalid Term Roster Parser\n")
+            return
+
+        roster = self.parser.roster
+        user_row = self.parser.name_to_row[username]
+        date_row = self.parser.date_row
+        name_col = self.parser.name_column
+
+        shifts: list[Shift] = []  # List of shifts for the term
+        dates = [cell.value for cell in roster[date_row][name_col:]]
+        shift_labels = [cell.value for cell in roster[user_row][name_col:]]
+
+        # remove non-dates from dates list, whitespace from shift labels and
+        # clean them up before mapping dates to the shifts (date->shift_label)
+        # NOTE: following for loop ensures that the number of valid dates and number of
+        # valid labels are equal. If we removed invalid dates earlier, it would have
+        # made list of dates shorter than list of shift_labels.
+        for dt, shift_label in zip(dates, shift_labels):
+            if isinstance(dt, datetime) and (
+                (shift_label is not None)
+                and isinstance(shift_label, str)  # a string
+                and (shift_label := shift_label.strip())  # not empty/whitespace only
+                and shift_label.upper() not in ("OFF")  # `OFF` days are just empty
+            ):
+                shifts.append(Shift(dt.date(), shift_label))
+
+        # TODO: In case wrong year and/or month may have been entered by the clerk, need
+        # to give the user the option to change wrong dates.
+        # NOTE: We need all dates for the TERM in roster, not for the user only
+        all_dates = [value for value in dates if isinstance(value, datetime)]
+        min_date = min(all_dates)
+        max_date = max(all_dates)
+        QMessageBox.about(
+            self, "About Roster",
+            f"""<p>Roster from {min_date} to {max_date}<br>
+            Roster has {len(shifts)} shifts<p>"""
+        )
+
+        # Get calendar events in the calendar of user's choosing, for the time period
+        # that have been put there by our application. We identify this by its
+        # "X-PUBLISHED-BY" property.
+        if self.user_data is None:
+            return  # We should not get here (just for type-checker)
+
+        try:
+            with get_davclient(
+                url="https://caldav.icloud.com/",
+                username=self.user_data["username"],
+                password=self.user_data["password"],
+            ) as client:
+                principal = client.principal()
+                if self.create_calendar:
+                    target_calendar = principal.make_calendar(self.calendar_name)
+                    print(f"Created new calendar: {self.calendar_name}")
+                else:
+                    target_calendar = principal.calendar(self.calendar_name)
+        except NotFoundError as err:
+            sys.stderr.write(f'Cannot find "{self.calendar_name}" calendar\n')
+            sys.stderr.write(f"{err}\n")
+            return
+        except AuthorizationError as err:
+            sys.stderr.write("Username and/or password is wrong\n")
+            sys.stderr.write(f"{err}\n")
+            return
+        except Exception as err:
+            sys.stderr.write(f"Unknown error: {err}\n")
+            return
+
+        # A WORD ABOUT LOGIC: caldav.Event.save() can "update" as well as create new
+        # events. If a shift is not in the new roster, we remove it from calendar. If it
+        # is in the new roster, it's SEQUENCE property is incremented (ie. it will be
+        # updated) in the icloud calendar.
+
+        existing_shifts = get_shifts_from_calendar(target_calendar, min_date, max_date)
+        if len(existing_shifts) > 0:
+            # check for differenced between old and new and delete set(old) - set(new)
+            print(f"Found {len(existing_shifts)} shifts in roster")
+        else:
+            print(
+                f"No shifts were found for the time period from {min_date} to {max_date}"
+            )
+
+        # insert all shifts in the new roster to calendar (update existing ones)
+        success_count = 0
+        fail_count = 0
+        for shift in shifts:
+            try:
+                caldav_cal = target_calendar.save_event(
+                    ical=shift.to_ical(), no_create=False, no_overwrite=False
+                )
+                success_count += 1
+                sys.stderr.write(f"{caldav_cal.data}\n")
+            except ConsistencyError as err:
+                sys.stderr.write(f"{err}\n")
+                print(
+                    f"Could not write shift: {shift.to_ical().decode('utf8').replace('\r', '')}"
+                )
+                fail_count += 1
+
+        if (
+            QMessageBox.information(
+                self,
+                "Program Completed",
+                f"""<p>Program was completed successfully<p>
+             * Successfully written {success_count} shifts<br>
+             * Failed to write {fail_count} shifts""",
+            )
+            == QMessageBox.StandardButton.Ok
+        ):
+            sys.exit(0)
 
 
 @final
@@ -186,16 +363,18 @@ class LoginWindow(QGroupBox):
             self,
             "User Credentials & Information",
             f"""<p>You Entered Following<p>
-            * Username: {self.user_data['username']}<br>
-            * Password: {self.user_data['password']}<br>
-            * Employee ID: {self.user_data['id']}<br>
-            * Employer: {self.user_data['employer']}""",
+            * Username: {self.user_data["username"]}<br>
+            * Password: {self.user_data["password"]}<br>
+            * Employee ID: {self.user_data["id"]}<br>
+            * Employer: {self.user_data["employer"]}""",
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.No,
         )
 
         if answer == QMessageBox.StandardButton.Ok:
             print("Login successful")
-            self.login_success.emit(self.user_data)  # signal to move on to next
+            # signal to move on to next
+            self.login_success.emit(self.user_data)
+
             # If userdata was not loaded from file on the disk (ie. entered by
             # user) and user_dir is given, write to relevant file for the user
             if not self.loaded_from_file and self.user_dir:
@@ -224,20 +403,31 @@ class LoginWindow(QGroupBox):
 class CalendarPickerWindow(QGroupBox):
     """
     Window to pick a calendar to synchronize with roster.
+
+    NOTE: Emitted signal `calendar_found` has 2 pieces of information.
+    1. Name of the calendar user wants to put roster into (name:str)
+    2. Whether it is new calendar or not (new_calendar:bool)
     """
+
+    calendar_found = pyqtSignal(dict)
 
     def __init__(self, calendars: list[str], *args, **kwargs):
         super().__init__("Select a Calendar")
+        self.widget_map: dict[QAbstractButton, QWidget] = (
+            dict()
+        )  # map right widget to left widget in a form row
 
         # Choose one from existing calendars: checkbox + combobox
         self.pick_cal_cb = QCheckBox("Select existing calendar")
         self.pick_cal_cb.setChecked(True)
         self.pick_cal_combo = QComboBox()
         self.pick_cal_combo.addItems(calendars)
+        self.widget_map[self.pick_cal_cb] = self.pick_cal_combo
 
         # Create a new calendar: checkbox + lineedit
         self.new_cal_cb = QCheckBox("Create a new calendar")
         self.new_cal_entry = QLineEdit()
+        self.widget_map[self.new_cal_cb] = self.new_cal_entry
 
         # If list of calendars is empty disable the checkbox + combobox
         if len(calendars) < 1:
@@ -264,7 +454,16 @@ class CalendarPickerWindow(QGroupBox):
 
     def submit(self):
         # Need to validate if it is a new calendar - May be NOT !!
-        pass
+        calendar_data = dict()  # keys: name, new_calendar
+        active_id = self.group.checkedId()
+        if active_id == 1:
+            calendar_data["name"] = self.new_cal_entry.text().strip()
+            calendar_data["new_calendar"] = True
+        elif active_id == 0:
+            calendar_data["name"] = self.pick_cal_combo.currentText()
+            calendar_data["new_calendar"] = False
+
+        self.calendar_found.emit(calendar_data)
 
     def select_calendar_type(self, i):
         print(f"Clicked ID: {i}")
@@ -282,8 +481,104 @@ class RosterUploaderWindow(QGroupBox):
     Enter a roster file to upload for processing.
     """
 
-    def __init__(self, *args, **kwargs):
+    roster_received = pyqtSignal(dict)
+
+    def __init__(self, roster_dir: str | None = None, *args, **kwargs):
         super().__init__("Upload Roster")
+        self.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
+        self.roster_dir = roster_dir  # Last dir opened for uploading roster files
+        self.roster_info: dict[str, str | None] = {
+            "type": None,  # Type of uploading roster: term/week
+            "file": None,  # String path to uploaded roster file
+        }
+
+        self.left_panel = QGroupBox("Roster Type")
+        self.term_cb = QCheckBox("Term")
+        self.week_cb = QCheckBox("Week")
+
+        l_vbox = QVBoxLayout()
+        l_vbox.addWidget(self.term_cb)
+        l_vbox.addWidget(self.week_cb)
+        self.left_panel.setLayout(l_vbox)
+
+        self.group = QButtonGroup()
+        self.group.setExclusive(True)
+        self.group.addButton(self.term_cb, 0)
+        self.group.addButton(self.week_cb, 1)
+        self.group.idClicked.connect(self.roster_type_selected)
+
+        self.right_panel = QGroupBox("Roster File")
+        self.upload_label = QLabel("Select Roster File")
+        self.upload_button = QPushButton("Upload")
+        self.upload_button.setEnabled(False)
+        self.upload_button.clicked.connect(self.upload_roster)
+
+        r_vbox = QVBoxLayout()
+        r_vbox.addWidget(self.upload_label)
+        r_vbox.addWidget(self.upload_button)
+        self.right_panel.setLayout(r_vbox)
+
+        hbox = QHBoxLayout()
+        hbox.addWidget(self.left_panel)
+        hbox.addWidget(self.right_panel)
+
+        self.submit_button = QPushButton("Submit")
+        self.submit_button.setEnabled(False)
+        self.submit_button.clicked.connect(self.submit_roster)
+
+        vbox = QVBoxLayout()
+        self.setLayout(vbox)
+        vbox.addLayout(hbox)
+        vbox.addWidget(self.submit_button)
+
+    def roster_type_selected(self, roster_id: int):
+        if roster_id == 0:
+            self.roster_info["type"] = "term"
+        elif roster_id == 1:
+            self.roster_info["type"] = "week"
+        self.upload_button.setEnabled(True)
+
+    def upload_roster(self):
+        """
+        NOTE: We have not way to cancel selected roster file (self.roster_file)
+        once it was selected. ? May be this not desired...
+        """
+        # Remember last dir from which roster file was uploaded
+        starting_dir = self.roster_dir if self.roster_dir else str(Path.home())
+        roster_file, file_selected = QFileDialog.getOpenFileName(
+            self,
+            "Select Roster File",
+            starting_dir,
+            "Excel Files (*.xlsx)",
+            options=QFileDialog.Option.ReadOnly,
+        )
+        if file_selected:
+            self.roster_dir = str(Path(roster_file).parent)
+            self.roster_info["file"] = roster_file
+            self.submit_button.setEnabled(True)
+            print(f"Uploading roster {roster_file}...")
+
+        elif self.roster_info["file"] is None:
+            self.submit_button.setEnabled(False)
+
+    def submit_roster(self):
+        """
+        Submit roster for parsing.
+        """
+        print(f"Submitting roster {self.roster_info['file']}...")
+        button = QMessageBox.information(
+            self,
+            "Sumbitting Roster",
+            f"""<p>You selected following roster file<p>
+            * Type: {self.roster_info["type"]}<br>
+            * File: {self.roster_info["file"]}""",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Ok,
+        )
+        if button == QMessageBox.StandardButton.Ok:
+            # Move on to parsing the roster
+            self.roster_received.emit(self.roster_info)
 
 
 @final
@@ -292,5 +587,27 @@ class NameSelecterWindow(QGroupBox):
     Display the names in the roster for the user to pick one.
     """
 
-    def __init__(self, *args, **kwargs):
+    name_selected = pyqtSignal(str)
+
+    def __init__(self, name_list: Sequence[str], *args, **kwargs):
         super().__init__("Select User Name")
+        self.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
+        heading = QLabel("Select your name in the roster")
+        self.submit_button = QPushButton("Submit")
+        self.submit_button.setEnabled(False)
+        self.submit_button.clicked.connect(self.submit_name)
+        self.names_combo = QComboBox()
+        self.names_combo.addItems(sorted(name_list))
+        self.names_combo.activated.connect(lambda: self.submit_button.setEnabled(True))
+
+        vbox = QVBoxLayout()
+        vbox.addWidget(heading)
+        vbox.addWidget(self.names_combo)
+        vbox.addWidget(self.submit_button)
+        self.setLayout(vbox)
+
+    def submit_name(self):
+        selected_name = self.names_combo.currentText()
+        print(f"You selected {selected_name}")
+        self.name_selected.emit(selected_name)

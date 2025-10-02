@@ -10,6 +10,8 @@ from caldav.davclient import get_davclient
 from caldav.lib.error import AuthorizationError, NotFoundError
 from icalendar.cal import Event
 
+from shift import Shift
+
 
 def get_existing_calendar(
     credentials: dict[str, str],
@@ -49,10 +51,19 @@ def get_existing_calendar(
 # - user credentials for icloud server - username & password
 # - name of the calendar to look up - if missing let user know and create one
 # - starting and ending dates for the period
+# - filter in actual `shifts` using X-PUBLISHED-BY property value of Shift class
+#
+# NOTE: cannot filter-out all but shift in one go with calendaar.search() because,
+# `xpath` is NotImplemented, and can't figure out how to use `props`
+#
 def get_shifts_from_calendar(calendar: Calendar, from_: date, to: date) -> list[Event]:
     shifts: list[Event] = list()
-    for event in calendar.search(start=from_, end=to, expand=True, event=True):
-        shifts.append(event.component)
+    all_events = calendar.search(start=from_, end=to, expand=True, event=True)
+    print(f"Found {len(all_events)} events from {from_} to {to} in {calendar.name} ")
+    for calobjresource in all_events:
+        event = calobjresource.component
+        if event.get("X-PUBLISHED-BY") == Shift.APP_NAME:
+            shifts.append(event)
     return shifts
 
 
