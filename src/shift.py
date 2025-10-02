@@ -3,7 +3,7 @@
 
 import uuid
 from datetime import date, datetime, time, timedelta
-from typing import final, override
+from typing import final, override, Self
 from zoneinfo import ZoneInfo
 
 from icalendar import Event
@@ -15,14 +15,14 @@ _APP_NAMESPACE = uuid.UUID("48f80ff6-3ddd-4b70-9ad0-24459b3219bc")
 _EMPLOYEE_ID = "60316064"  # My SWSLHD ID
 _EMPLOYER_NAME = "SWSLHD"  # Local Health District
 
-APP_DATA = {"name": APP_NAME, "version": APP_VERSION}
-
 
 @final
 class Shift(Event):
     """
     NOTE: Time zone is hard coded as Australia/Sydney
     """
+    APP_NAME = APP_NAME
+    APP_VERSION = APP_VERSION
 
     # Use a decorator to read a file update this dict so the user can modify
     # what the labels mean if required.
@@ -58,7 +58,10 @@ class Shift(Event):
             self.add("dtstart", shift_start)
             self.add("duration", timedelta(hours=10))
         else:
-            # Looks like icloud's caldav server doesn't support this
+            # Looks like icloud's caldav server doesn't support DATE object. I
+            # have to use DATE-TIME objects instead. If it did DTSTART, DTEND
+            # properties would have been written as DTSTART;VALUE=DATE:20250810
+            # for example. And duration would have been 1 day
             # This seem to raise PutError '404 not found
             # self.add("dtstart", shift_date)  # Whole day event with no time-of-day
             self.add("dtstart", datetime.combine(shift_date, time(0, 0, 0)))
@@ -66,11 +69,11 @@ class Shift(Event):
 
         shift_summary = __class__.LABEL_MEANING.get(shift_label, shift_label)
         self.add("summary", shift_summary)
-        self.uid = self.__generate_uid()
+        self.uid = self.__generate_uid()  # combination of emp ID, employer & shift
         self.categories = ["Work", "Shift"]
         # self.add("class", "PRIVATE")
         self.sequence = 0  # increment this each time the shift is modified
-        self.add("x-published-by", f"{APP_NAME}/v{APP_VERSION}")
+        self.add("x-published-by", f"{self.APP_NAME}")  # use this to filter out shifts
 
     def __generate_uid(self):
         """
@@ -91,13 +94,15 @@ class Shift(Event):
         return str(uid)
 
     @override
-    def __eq__(self, other: object)->bool:
-    # def __eq__(self, other: typing.Self)->bool:
+    def __eq__(self, other: object) -> bool:
+        # def __eq__(self, other: typing.Self)->bool:
         """
         This is used by `==` operation as well as `in` operation.
+        Enforce `other` is of same class as `self`
         """
-        if not hasattr(other, "uid"):
-            raise TypeError(f'{other} does not have a "uid" attribute')
+        if not isinstance(other, type(self)):
+            raise TypeError(f'{other} needs to be a {Self} class instance')
+
         return self.uid == other.uid
 
 
