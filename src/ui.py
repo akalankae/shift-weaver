@@ -8,6 +8,8 @@ from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import final
+import threading
+import time
 
 from caldav.davclient import get_davclient
 from caldav.lib.error import AuthorizationError, ConsistencyError, NotFoundError
@@ -133,8 +135,16 @@ class MainWindow(QMainWindow):
             sys.stderr.write("None is not a valid roster file\n")
             return
 
+        t0 = time.perf_counter() # Dbg
         self.parser = TermRosterParser(self.roster_file)
+        t1 = time.perf_counter()
         names = self.parser.name_to_row.keys()
+
+        dt2 = time.perf_counter() - t1
+        sys.stderr.write(f"""
+    Creating `TermRosterParser` took {t1-t0:.3f} seconds
+    .keys() invocation on Parser.name_to_row took {dt2:.3f} seconds
+    """)
 
         self.name_select_window = NameSelecterWindow(list(names))
         self.name_select_window.name_selected.connect(self.update_calendar)
@@ -179,11 +189,9 @@ class MainWindow(QMainWindow):
         all_dates = [value for value in dates if isinstance(value, datetime)]
         min_date = min(all_dates)
         max_date = max(all_dates)
-        QMessageBox.about(
-            self, "About Roster",
-            f"""<p>Roster from {min_date} to {max_date}<br>
-            Roster has {len(shifts)} shifts<p>"""
-        )
+        msg = f"<p>Roster from {min_date.date()} to {max_date.date()} has {len(shifts)} shifts<p>"
+        QMessageBox.about(self, "About Roster", msg)
+        sys.stderr.write(f"{msg}\n")
 
         # Get calendar events in the calendar of user's choosing, for the time period
         # that have been put there by our application. We identify this by its
@@ -230,22 +238,29 @@ class MainWindow(QMainWindow):
             )
 
         # insert all shifts in the new roster to calendar (update existing ones)
-        success_count = 0
-        fail_count = 0
+        threads = []
+        outcomes = {
+            "success_count": 0,  # number of shifts that were successfully added to calendar
+            "fails": [],  # shifts failed to add to calendar
+        }
         for shift in shifts:
-            try:
-                caldav_cal = target_calendar.save_event(
-                    ical=shift.to_ical(), no_create=False, no_overwrite=False
-                )
-                success_count += 1
-                sys.stderr.write(f"{caldav_cal.data}\n")
-            except ConsistencyError as err:
-                sys.stderr.write(f"{err}\n")
-                print(
-                    f"Could not write shift: {shift.to_ical().decode('utf8').replace('\r', '')}"
-                )
-                fail_count += 1
+            thread = threading.Thread(
+                target=self.__save_calendar_event,
+                args=(target_calendar, outcomes),
+                kwargs={
+                    "ical": shift.to_ical(),
+                    "no_create": False,
+                    "no_overwrite": False,
+                },
+            )
+            thread.start()
+            threads.append(thread)
 
+        for thread in threads:
+            thread.join()
+
+        success_count = outcomes["success_count"]
+        fail_count = len(outcomes["fails"])
         if (
             QMessageBox.information(
                 self,
@@ -257,6 +272,20 @@ class MainWindow(QMainWindow):
             == QMessageBox.StandardButton.Ok
         ):
             sys.exit(0)
+
+    @staticmethod
+    def __save_calendar_event(calendar, outcomes, **kwargs):
+        try:
+            calendar.save_event(**kwargs)
+        except ConsistencyError as err:
+            shift_ical = kwargs["ical"]
+            outcomes["fails"].append(shift_ical)
+            sys.stderr.write(f"{err}\n")
+            print(
+                f"Could not write shift: {shift_ical.decode('utf8').replace('\r', '')}"
+            )
+        else:
+            outcomes["success_count"] += 1
 
 
 @final
