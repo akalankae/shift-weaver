@@ -130,7 +130,7 @@ if roster_type == "term":
 
     # Get first and last dates of the term. This is required to search for what
     # already exists in the CalDAV server.
-    filtered_dates: list[datetime] = list(filter(None, dates))
+    filtered_dates: list[datetime] = list(filter(lambda o: isinstance(o, datetime), dates))
     min_date = min(filtered_dates)
     max_date = max(filtered_dates)
     print(f"Term from: {min_date.date()} to {max_date.date()}")

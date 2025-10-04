@@ -55,8 +55,8 @@ class Shift(Event):
         if shift_label in __class__.SHIFT_START_TIMES:
             start_time = __class__.SHIFT_START_TIMES[shift_label]
             shift_start = datetime.combine(shift_date, start_time)
-            self.add("dtstart", shift_start)
-            self.add("duration", timedelta(hours=10))
+            self.add("DTSTART", shift_start)
+            self.add("DURATION", timedelta(hours=10))
         else:
             # Looks like icloud's caldav server doesn't support DATE object. I
             # have to use DATE-TIME objects instead. If it did DTSTART, DTEND
@@ -64,18 +64,37 @@ class Shift(Event):
             # for example. And duration would have been 1 day
             # This seem to raise PutError '404 not found
             # self.add("dtstart", shift_date)  # Whole day event with no time-of-day
-            self.add("dtstart", datetime.combine(shift_date, time(0, 0, 0)))
-            self.add("duration", timedelta(hours=24))
+            self.add("DTSTART", datetime.combine(shift_date, time(0, 0, 0)))
+            self.add("DURATION", timedelta(hours=24))
 
         shift_summary = __class__.LABEL_MEANING.get(shift_label, shift_label)
-        self.add("summary", shift_summary)
-        self.uid = self.__generate_uid()  # combination of emp ID, employer & shift
+        self.add("SUMMARY", shift_summary)
+        self.uuid = self.__generate_uid()  # combination of emp ID, employer & shift
+        self.uid = str(self.uuid)
         self.categories = ["Work", "Shift"]
-        # self.add("class", "PRIVATE")
+        self.add("CLASS", "PRIVATE")
         self.sequence = 0  # increment this each time the shift is modified
-        self.add("x-published-by", f"{self.APP_NAME}")  # use this to filter out shifts
+        self.add("X-PUBLISHED-BY", f"{self.APP_NAME}")  # use this to filter out shifts
 
-    def __generate_uid(self):
+
+    # DATE-TIME of DTSTART property determines the sorting order.
+    def __lt__(self, other:Self)->bool:
+        """
+        datetime value of DTSTART property of the VEVENT dictates the sorting order.
+        """
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.start < other.start
+
+    # Integral value of UUID of the VEVENT determines hash value and uniqueness
+    @override
+    def __hash__(self)->int:
+        """
+        Integral value of UUID of the VEVENT determines hash value and uniqueness.
+        """
+        return self.uuid.int
+
+    def __generate_uid(self)->uuid.UUID:
         """
         Generate deterministic UID compliant with RFC 4122 section 4.4 and 4.5
         UID is generated using hash of random hardcoded string AND SHA1 hash of
@@ -91,7 +110,7 @@ class Shift(Event):
         shift_string = self.start.strftime("%Y%m%d%H%M%S%Z")
         deterministic_string = f"{_EMPLOYER_NAME}:{_EMPLOYEE_ID}:{shift_string}"
         uid = uuid.uuid5(_APP_NAMESPACE, deterministic_string)
-        return str(uid)
+        return uid
 
     @override
     def __eq__(self, other: object) -> bool:
@@ -101,7 +120,7 @@ class Shift(Event):
         Enforce `other` is of same class as `self`
         """
         if not isinstance(other, type(self)):
-            raise TypeError(f'{other} needs to be a {Self} class instance')
+            return NotImplemented
 
         return self.uid == other.uid
 

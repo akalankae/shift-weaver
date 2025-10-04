@@ -8,7 +8,7 @@ from datetime import date
 from caldav.collection import Calendar
 from caldav.davclient import get_davclient
 from caldav.lib.error import AuthorizationError, NotFoundError
-from icalendar.cal import Event
+from caldav.calendarobjectresource import Event
 
 from shift import Shift
 
@@ -55,21 +55,31 @@ def get_existing_calendar(
 #
 # NOTE: cannot filter-out all but shift in one go with calendaar.search() because,
 # `xpath` is NotImplemented, and can't figure out how to use `props`
-#
-def get_shifts_from_calendar(calendar: Calendar, from_: date, to: date) -> list[Event]:
+# UPDATE: change return value from icalendar.Event to caldav.Event
+def get_shifts_from_calendar(
+    calendar: Calendar,  # caldav.collection.Calendar
+    start: date,  # datetime.date
+    end: date,  # datetime.date
+) -> list[Event]:
+    """
+    Get a list of caldav.Events from `start` (date) to `end` (date) from a
+    caldav.Calendar object.
+    """
     shifts: list[Event] = list()
-    all_events = calendar.search(start=from_, end=to, expand=True, event=True)
-    print(f"Found {len(all_events)} events from {from_} to {to} in {calendar.name} ")
-    for calobjresource in all_events:
-        event = calobjresource.component
+    all_events = calendar.search(start=start, end=end, expand=True, event=True)
+    print(f"Found {len(all_events)} events from {start} to {end} in {calendar.name} ")
+    for caldav_event in all_events:
+        event = caldav_event.component
         if event.get("X-PUBLISHED-BY") == Shift.APP_NAME:
-            shifts.append(event)
+            shifts.append(caldav_event)
     return shifts
 
 
 # Get the list of (names of) existing calendars from icloud
 # If credentials are incorrect raise `AuthorizationError`
-def get_calendar_list(username: str, password: str, url: str|None = None) -> list[str]:
+def get_calendar_list(
+    username: str, password: str, url: str | None = None
+) -> list[str]:
     calendar_list: list[str] = []
     if url is None:
         url = r"https://caldav.icloud.com/"
@@ -85,7 +95,8 @@ def get_calendar_list(username: str, password: str, url: str|None = None) -> lis
                     calendar_list.append(cal.name)
     return calendar_list
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     username = "akalankae84@icloud.com"
     password = "siqm-wprd-skeg-rqlx"
     try:

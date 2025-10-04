@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import final
 
+from caldav import calendarobjectresource
+from icalendar.cal import Event
 from caldav.davclient import get_davclient
 from caldav.lib.error import AuthorizationError, ConsistencyError, NotFoundError
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
@@ -34,6 +36,14 @@ from PyQt6.QtWidgets import (
 from calendar_handler import get_calendar_list, get_shifts_from_calendar
 from shift import Shift
 from term_roster_parser import TermRosterParser
+
+
+LOG_FILE = None
+
+if len(sys.argv) > 1:
+    log_file = Path(sys.argv[1]).expanduser().resolve()
+    if log_file.exists() and log_file.is_file():
+        LOG_FILE = log_file.open("utf8")
 
 
 @final
@@ -112,9 +122,6 @@ class MainWindow(QMainWindow):
     def upload_roster(self):
         self.roster_upload_window = RosterUploaderWindow()
         self.roster_upload_window.roster_received.connect(self.get_roster_info)
-
-        # connect to slot for NameSelectWindow
-
         self.root.addWidget(self.roster_upload_window)
         self.root.setCurrentWidget(self.roster_upload_window)
 
@@ -124,7 +131,6 @@ class MainWindow(QMainWindow):
 
         if self.roster_type == "term":
             self.parse_term_roster()
-
         elif self.roster_type == "week":
             print("Not Implemented Yet")
 
@@ -135,7 +141,7 @@ class MainWindow(QMainWindow):
 
         self.parser = TermRosterParser(self.roster_file)
         names = self.parser.name_to_row.keys()
-
+        # ? Disable select name combobox if `names` is empty
         self.name_select_window = NameSelecterWindow(list(names))
         self.name_select_window.name_selected.connect(self.update_calendar)
 
@@ -150,10 +156,10 @@ class MainWindow(QMainWindow):
             sys.stderr.write("Invalid Term Roster Parser\n")
             return
 
-        roster = self.parser.roster
-        user_row = self.parser.name_to_row[username]
-        date_row = self.parser.date_row
-        name_col = self.parser.name_column
+        roster = self.parser.roster  # openpyxl `Worksheet`
+        user_row = self.parser.name_to_row[username]  # name string: row number (int)
+        date_row = self.parser.date_row  # row number for dates row (int)
+        name_col = self.parser.name_column  # column number for user (int)
 
         shifts: list[Shift] = []  # List of shifts for the term
         dates = [cell.value for cell in roster[date_row][name_col:]]
@@ -180,9 +186,10 @@ class MainWindow(QMainWindow):
         min_date = min(all_dates)
         max_date = max(all_dates)
         QMessageBox.about(
-            self, "About Roster",
-            f"""<p>Roster from {min_date} to {max_date}<br>
-            Roster has {len(shifts)} shifts<p>"""
+            self,
+            "About Roster",
+            f"""<p>Roster from {min_date.date()} to {max_date.date()}<br>
+            Roster has {len(shifts)} shifts<p>""",
         )
 
         # Get calendar events in the calendar of user's choosing, for the time period
@@ -220,10 +227,21 @@ class MainWindow(QMainWindow):
         # is in the new roster, it's SEQUENCE property is incremented (ie. it will be
         # updated) in the icloud calendar.
 
-        existing_shifts = get_shifts_from_calendar(target_calendar, min_date, max_date)
-        if len(existing_shifts) > 0:
-            # check for differenced between old and new and delete set(old) - set(new)
-            print(f"Found {len(existing_shifts)} shifts in roster")
+        curr_shifts: list[calendarobjectresource.Event] = get_shifts_from_calendar(
+            target_calendar, min_date, max_date
+        )
+        if len(curr_shifts) > 0:
+            print(f"Found {len(curr_shifts)} shifts in roster")
+
+            # check for differences between old and new and delete set(old) - set(new)
+            outdated_shifts: list[calendarobjectresource.Event] = []
+            for shift in curr_shifts:
+                if shift.icalendar_component not in shifts:
+                    outdated_shifts.append(shift)
+            for shift in outdated_shifts:
+                if LOG_FILE is not None:
+                    LOG_FILE.write(shift.data)
+                shift.delete()
         else:
             print(
                 f"No shifts were found for the time period from {min_date} to {max_date}"
