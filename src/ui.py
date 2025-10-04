@@ -146,6 +146,7 @@ class MainWindow(QMainWindow):
         t1 = time.perf_counter()
         names = self.parser.name_to_row.keys()
 <<<<<<< HEAD
+<<<<<<< HEAD
         # ? Disable select name combobox if `names` is empty
 =======
 
@@ -156,6 +157,9 @@ class MainWindow(QMainWindow):
     """)
 
 >>>>>>> 4674977 (wip(multithreading): make writing to server multi-threaded for efficiency)
+=======
+        # ? Disable select name combobox if `names` is empty
+>>>>>>> ea10262 (fix: get deleting existing shifts to work)
         self.name_select_window = NameSelecterWindow(list(names))
         self.name_select_window.name_selected.connect(self.update_calendar)
 
@@ -200,17 +204,23 @@ class MainWindow(QMainWindow):
         min_date = min(all_dates)
         max_date = max(all_dates)
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ea10262 (fix: get deleting existing shifts to work)
         QMessageBox.about(
             self,
             "About Roster",
             f"""<p>Roster from {min_date.date()} to {max_date.date()}<br>
             Roster has {len(shifts)} shifts<p>""",
         )
+<<<<<<< HEAD
 =======
         msg = f"<p>Roster from {min_date.date()} to {max_date.date()} has {len(shifts)} shifts<p>"
         QMessageBox.about(self, "About Roster", msg)
         sys.stderr.write(f"{msg}\n")
 >>>>>>> 4674977 (wip(multithreading): make writing to server multi-threaded for efficiency)
+=======
+>>>>>>> ea10262 (fix: get deleting existing shifts to work)
 
         # Get calendar events in the calendar of user's choosing, for the time period
         # that have been put there by our application. We identify this by its
