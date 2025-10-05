@@ -60,7 +60,7 @@ def get_shifts_from_calendar(
     calendar: Calendar,  # caldav.collection.Calendar
     start: date,  # datetime.date
     end: date,  # datetime.date
-) -> list[Event]:
+) -> list[Event]:  # list[caldav.calendarobject.Event]
     """
     Get a list of caldav.Events from `start` (date) to `end` (date) from a
     caldav.Calendar object.
