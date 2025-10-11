@@ -2,22 +2,21 @@
 # ui.py
 # Graphical user interface for the program
 
+import atexit
 import pickle
 import sys
+import time
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import final
-import threading
-import time
 
 from caldav import calendarobjectresource
-from icalendar.cal import Event
 from caldav.davclient import get_davclient
 from caldav.lib.error import AuthorizationError, ConsistencyError, NotFoundError
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QAbstractButton,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -32,20 +31,27 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
-    QWidget,
 )
 
 from calendar_handler import get_calendar_list, get_shifts_from_calendar
 from shift import Shift
 from term_roster_parser import TermRosterParser
 
-
-LOG_FILE = None
-
+DEFAULT_LOG_FILE = "/tmp/shift-weaver.log"
 if len(sys.argv) > 1:
     log_file = Path(sys.argv[1]).expanduser().resolve()
     if log_file.exists() and log_file.is_file():
-        LOG_FILE = log_file.open("utf8")
+        LogFile = log_file.open("wt", encoding="utf8")
+    else:
+        LogFile = Path(DEFAULT_LOG_FILE).open("wt", encoding="utf8")
+else:
+    LogFile = Path(DEFAULT_LOG_FILE).open("wt", encoding="utf8")
+
+
+@atexit.register
+def close_logfile():
+    LogFile.close()
+    print(f"Closed Logfile: {LogFile.name}")
 
 
 @final
@@ -135,20 +141,21 @@ class MainWindow(QMainWindow):
             self.parse_term_roster()
         elif self.roster_type == "week":
             print("Not Implemented Yet")
+            raise NotImplementedError("Week roster is not implemented yet.")
 
     def parse_term_roster(self):
         if self.roster_file is None:
             sys.stderr.write("None is not a valid roster file\n")
             return
 
-        t0 = time.perf_counter() # Dbg
+        t0 = time.perf_counter()  # Dbg
         self.parser = TermRosterParser(self.roster_file)
         t1 = time.perf_counter()
         names = self.parser.name_to_row.keys()
 
         dt2 = time.perf_counter() - t1
         sys.stderr.write(f"""
-    Creating `TermRosterParser` took {t1-t0:.3f} seconds
+    Creating `TermRosterParser` took {t1 - t0:.3f} seconds
     .keys() invocation on Parser.name_to_row took {dt2:.3f} seconds
     """)
 
@@ -166,14 +173,17 @@ class MainWindow(QMainWindow):
             sys.stderr.write("Invalid Term Roster Parser\n")
             return
 
-        roster = self.parser.roster  # openpyxl `Worksheet`
-        user_row = self.parser.name_to_row[username]  # name string: row number (int)
-        date_row = self.parser.date_row  # row number for dates row (int)
-        name_col = self.parser.name_column  # column number for user (int)
-
         shifts: list[Shift] = []  # List of shifts for the term
-        dates = [cell.value for cell in roster[date_row][name_col:]]
-        shift_labels = [cell.value for cell in roster[user_row][name_col:]]
+
+        user_row = self.parser.name_to_row[username]
+        valid_dates = self.parser.roster.loc[self.parser.date_row].map(
+            lambda o: isinstance(o, datetime)
+        )
+        print(valid_dates)
+        dates = self.parser.roster.loc[self.parser.date_row].loc[valid_dates]
+        print(dates)
+        shift_labels = self.parser.roster.loc[user_row].loc[valid_dates]
+        print(shift_labels)
 
         # remove non-dates from dates list, whitespace from shift labels and
         # clean them up before mapping dates to the shifts (date->shift_label)
@@ -192,18 +202,9 @@ class MainWindow(QMainWindow):
         # TODO: In case wrong year and/or month may have been entered by the clerk, need
         # to give the user the option to change wrong dates.
         # NOTE: We need all dates for the TERM in roster, not for the user only
-        all_dates = [value for value in dates if isinstance(value, datetime)]
-        min_date = min(all_dates)
-        max_date = max(all_dates)
-        QMessageBox.about(
-            self,
-            "About Roster",
-            f"""<p>Roster from {min_date.date()} to {max_date.date()}<br>
-            Roster has {len(shifts)} shifts<p>""",
-        )
-        msg = f"<p>Roster from {min_date.date()} to {max_date.date()} has {len(shifts)} shifts<p>"
-        QMessageBox.about(self, "About Roster", msg)
-        sys.stderr.write(f"{msg}\n")
+        min_date = min(dates)
+        max_date = max(dates)
+
         msg = f"<p>Roster from {min_date.date()} to {max_date.date()} has {len(shifts)} shifts<p>"
         QMessageBox.about(self, "About Roster", msg)
         sys.stderr.write(f"{msg}\n")
@@ -238,6 +239,7 @@ class MainWindow(QMainWindow):
             sys.stderr.write(f"Unknown error: {err}\n")
             return
 
+        # TODO: following comment needs updating (probably removal?)
         # A WORD ABOUT LOGIC: caldav.Event.save() can "update" as well as create new
         # events. If a shift is not in the new roster, we remove it from calendar. If it
         # is in the new roster, it's SEQUENCE property is incremented (ie. it will be
@@ -246,8 +248,13 @@ class MainWindow(QMainWindow):
         curr_shifts: list[calendarobjectresource.Event] = get_shifts_from_calendar(
             target_calendar, min_date, max_date
         )
+        # If there are any shifts in the current calendar in icloud, check them against
+        # shifts in uploaded roster. If new roster does not have same shifts, then
+        # delete them from icloud calendar.
         if len(curr_shifts) > 0:
-            print(f"Found {len(curr_shifts)} shifts in roster")
+            print(f"Found {len(curr_shifts)} shifts in current roster")
+            if LogFile is not None:
+                LogFile.write(f"Found {len(curr_shifts)} shifts in current roster\n")
 
             # check for differences between old and new and delete set(old) - set(new)
             outdated_shifts: list[calendarobjectresource.Event] = []
@@ -255,38 +262,50 @@ class MainWindow(QMainWindow):
                 if shift.icalendar_component not in shifts:
                     outdated_shifts.append(shift)
             for shift in outdated_shifts:
-                if LOG_FILE is not None:
-                    LOG_FILE.write(shift.data)
+                if LogFile is not None:
+                    LogFile.write(shift.data)
                 shift.delete()
         else:
             print(
                 f"No shifts were found for the time period from {min_date} to {max_date}"
             )
 
-        # insert all shifts in the new roster to calendar (update existing ones)
-        threads = []
-        outcomes = {
-            "success_count": 0,  # number of shifts that were successfully added to calendar
-            "fails": [],  # shifts failed to add to calendar
-        }
+        # collect all shifts in uploaded new roster that are not in icloud calendar
+        new_shifts: list[Shift] = []
         for shift in shifts:
-            thread = threading.Thread(
-                target=self.__save_calendar_event,
-                args=(target_calendar, outcomes),
-                kwargs={
-                    "ical": shift.to_ical(),
-                    "no_create": False,
-                    "no_overwrite": False,
-                },
-            )
-            thread.start()
-            threads.append(thread)
+            for curr_shift in curr_shifts:
+                if shift == curr_shift.icalendar_component:
+                    break
+            else:
+                new_shifts.append(shift)
 
-        for thread in threads:
-            thread.join()
+        msg = f"{len(new_shifts)} new shifts were found from {min_date.date()} to {max_date.date()} in {target_calendar.name}"
+        print(msg)
+        if LogFile is not None:
+            LogFile.write(f"{msg}\n")
 
-        success_count = outcomes["success_count"]
-        fail_count = len(outcomes["fails"])
+        # insert all shifts in the new roster to calendar (update existing ones)
+        # threads = []
+        # Gather outcome of writing to calendar (caldav.Calendar.save_event()). If
+        # writing successful TRUE, if failed FALSE. Position in the list tallys with
+        # position in the list of shifts in `new_shifts` (ie. they're parellel lists)
+        outcomes: list[bool] = [False for _ in new_shifts]
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            for i, shift in enumerate(new_shifts):
+                executor.submit(
+                    self.__save_calendar_event,
+                    target_calendar,
+                    outcomes,
+                    i,
+                    kwargs={
+                        "ical": shift.to_ical(),
+                        "no_create": False,
+                        "no_overwrite": False,
+                    },
+                )
+
+        success_count = outcomes.count(True)
+        fail_count = outcomes.count(False)
         if (
             QMessageBox.information(
                 self,
@@ -300,18 +319,19 @@ class MainWindow(QMainWindow):
             sys.exit(0)
 
     @staticmethod
-    def __save_calendar_event(calendar, outcomes, **kwargs):
+    def __save_calendar_event(calendar, outcome_list, index, **kwargs):
         try:
             calendar.save_event(**kwargs)
         except ConsistencyError as err:
-            shift_ical = kwargs["ical"]
-            outcomes["fails"].append(shift_ical)
+            shift_ical = kwargs.get("ical")  # bytes object from icalendar.Event
+            if shift_ical is None:
+                raise
             sys.stderr.write(f"{err}\n")
-            print(
-                f"Could not write shift: {shift_ical.decode('utf8').replace('\r', '')}"
-            )
+            if LogFile is not None:
+                shift_str = shift_ical.decode("utf8").replace("\r", "")
+                LogFile.write(f"Could not write shift: {shift_str}\n")
         else:
-            outcomes["success_count"] += 1
+            outcome_list[index] = True
 
 
 @final
@@ -468,21 +488,16 @@ class CalendarPickerWindow(QGroupBox):
 
     def __init__(self, calendars: list[str], *args, **kwargs):
         super().__init__("Select a Calendar")
-        self.widget_map: dict[QAbstractButton, QWidget] = (
-            dict()
-        )  # map right widget to left widget in a form row
 
         # Choose one from existing calendars: checkbox + combobox
         self.pick_cal_cb = QCheckBox("Select existing calendar")
         self.pick_cal_cb.setChecked(True)
         self.pick_cal_combo = QComboBox()
         self.pick_cal_combo.addItems(calendars)
-        self.widget_map[self.pick_cal_cb] = self.pick_cal_combo
 
         # Create a new calendar: checkbox + lineedit
         self.new_cal_cb = QCheckBox("Create a new calendar")
         self.new_cal_entry = QLineEdit()
-        self.widget_map[self.new_cal_cb] = self.new_cal_entry
 
         # If list of calendars is empty disable the checkbox + combobox
         if len(calendars) < 1:
