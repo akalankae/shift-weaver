@@ -489,7 +489,6 @@ class CalendarPickerWindow(QGroupBox):
 
         # Choose one from existing calendars: checkbox + combobox
         self.pick_cal_cb = QCheckBox("Select existing calendar")
-        self.pick_cal_cb.setChecked(True)
         self.pick_cal_combo = QComboBox()
         self.pick_cal_combo.addItems(calendars)
 
@@ -497,12 +496,15 @@ class CalendarPickerWindow(QGroupBox):
         self.new_cal_cb = QCheckBox("Create a new calendar")
         self.new_cal_entry = QLineEdit()
 
-        # If list of calendars is empty disable the checkbox + combobox
+        # If list of calendars is empty, disable picking existing calendar and check
+        # creating a new calendar. If not just check picking existing calendar.
         if len(calendars) < 1:
             self.pick_cal_cb.setEnabled(False)
             self.pick_cal_combo.setEnabled(False)
+            self.new_cal_cb.setChecked(True)
         else:
-            self.new_cal_cb.setChecked(False)
+            self.pick_cal_cb.setChecked(True)
+            self.new_cal_entry.setEnabled(False)
 
         # Make above 2 options mutually exclusive
         self.group = QButtonGroup()
