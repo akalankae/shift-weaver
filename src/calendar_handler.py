@@ -69,7 +69,7 @@ def get_shifts_from_calendar(
     all_events = calendar.search(start=start, end=end, expand=True, event=True)
     print(f"Found {len(all_events)} events from {start} to {end} in {calendar.name} ")
     for caldav_event in all_events:
-        event = caldav_event.component
+        event = caldav_event.component # icalendar.Event for comparison
         if event.get("X-PUBLISHED-BY") == Shift.APP_NAME:
             shifts.append(caldav_event)
     return shifts

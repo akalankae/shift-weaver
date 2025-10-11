@@ -7,14 +7,14 @@ import pickle
 import sys
 import time
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import final
 
+import pandas as pd
 from caldav import calendarobjectresource
 from caldav.davclient import get_davclient
-from caldav.lib.error import AuthorizationError, ConsistencyError, NotFoundError
+from caldav.lib.error import AuthorizationError, NotFoundError
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -123,17 +123,34 @@ class MainWindow(QMainWindow):
             self.root.setCurrentWidget(self.calendar_picker_window)
 
     def get_preferred_calendar(self, calendar_info: dict):
+        """
+        Slot for the signal CalendarPickerWindow.calendar_found.
+        Takes a dictionary with 2 keys.
+        * name(str): name of the calendar to use
+        * new_calendar(bool): create new calendar or not?
+        Finishes off by launching the window to select the roster file.
+        """
         self.calendar_name = calendar_info["name"]  # string
         self.create_calendar = calendar_info["new_calendar"]  # bool
         self.upload_roster()
 
     def upload_roster(self):
+        """
+        Launches the window to select the roster file to read and upload to the server.
+        Selects both roster type: "term" or "week" roster AND path to excel roster file.
+        """
         self.roster_upload_window = RosterUploaderWindow()
         self.roster_upload_window.roster_received.connect(self.get_roster_info)
         self.root.addWidget(self.roster_upload_window)
         self.root.setCurrentWidget(self.roster_upload_window)
 
     def get_roster_info(self, roster_info: dict[str, str]):
+        """
+        Slot for RosterUploaderWindow.roster_recieved signal.
+        Takes one dictionary parameter with 2 keys.
+        * type(str): type of uploaded roster - term or week
+        * file(str): file path to parsed roster file (excel file)
+        """
         self.roster_type = roster_info["type"]
         self.roster_file = roster_info["file"]
 
@@ -144,6 +161,10 @@ class MainWindow(QMainWindow):
             raise NotImplementedError("Week roster is not implemented yet.")
 
     def parse_term_roster(self):
+        """
+        Reads the term roster and parses it into a TermRosterParser object.
+        Parsed roster has the ability to get the shifts for any user for the term.
+        """
         if self.roster_file is None:
             sys.stderr.write("None is not a valid roster file\n")
             return
@@ -167,23 +188,25 @@ class MainWindow(QMainWindow):
 
     def update_calendar(self, username: str):
         """
-        Update the relevant calendar in icloud.
+        Use all the user preferences and parsed roster to update the relevant calendar
+        in icloud caldav server.
         """
         if self.parser is None:
             sys.stderr.write("Invalid Term Roster Parser\n")
             return
 
-        shifts: list[Shift] = []  # List of shifts for the term
+        shifts: list[Shift] = []  # List of shift events for the term
 
         user_row = self.parser.name_to_row[username]
+        # Evaluate which cell values in date row are valid datetimes. Valid ones get
+        # `True` and invalid ones get `False`
         valid_dates = self.parser.roster.loc[self.parser.date_row].map(
             lambda o: isinstance(o, datetime)
         )
-        print(valid_dates)
-        dates = self.parser.roster.loc[self.parser.date_row].loc[valid_dates]
-        print(dates)
-        shift_labels = self.parser.roster.loc[user_row].loc[valid_dates]
-        print(shift_labels)
+        # Filter out dates using truthyness in valid_dates
+        dates = self.parser.roster.loc[self.parser.date_row].loc[valid_dates] # pyright: ignore
+        # Get parellel shift labels
+        shift_labels = self.parser.roster.loc[user_row].loc[valid_dates] # pyright: ignore
 
         # remove non-dates from dates list, whitespace from shift labels and
         # clean them up before mapping dates to the shifts (date->shift_label)
@@ -191,8 +214,8 @@ class MainWindow(QMainWindow):
         # valid labels are equal. If we removed invalid dates earlier, it would have
         # made list of dates shorter than list of shift_labels.
         for dt, shift_label in zip(dates, shift_labels):
-            if isinstance(dt, datetime) and (
-                (shift_label is not None)
+            if (
+                pd.notna(shift_label)
                 and isinstance(shift_label, str)  # a string
                 and (shift_label := shift_label.strip())  # not empty/whitespace only
                 and shift_label.upper() not in ("OFF")  # `OFF` days are just empty
@@ -253,8 +276,7 @@ class MainWindow(QMainWindow):
         # delete them from icloud calendar.
         if len(curr_shifts) > 0:
             print(f"Found {len(curr_shifts)} shifts in current roster")
-            if LogFile is not None:
-                LogFile.write(f"Found {len(curr_shifts)} shifts in current roster\n")
+            LogFile.write(f"Found {len(curr_shifts)} shifts in current roster\n")
 
             # check for differences between old and new and delete set(old) - set(new)
             outdated_shifts: list[calendarobjectresource.Event] = []
@@ -281,31 +303,22 @@ class MainWindow(QMainWindow):
 
         msg = f"{len(new_shifts)} new shifts were found from {min_date.date()} to {max_date.date()} in {target_calendar.name}"
         print(msg)
-        if LogFile is not None:
-            LogFile.write(f"{msg}\n")
+        LogFile.write(f"{msg}\n")
 
-        # insert all shifts in the new roster to calendar (update existing ones)
-        # threads = []
-        # Gather outcome of writing to calendar (caldav.Calendar.save_event()). If
-        # writing successful TRUE, if failed FALSE. Position in the list tallys with
-        # position in the list of shifts in `new_shifts` (ie. they're parellel lists)
-        outcomes: list[bool] = [False for _ in new_shifts]
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            for i, shift in enumerate(new_shifts):
-                executor.submit(
-                    self.__save_calendar_event,
-                    target_calendar,
-                    outcomes,
-                    i,
-                    kwargs={
-                        "ical": shift.to_ical(),
-                        "no_create": False,
-                        "no_overwrite": False,
-                    },
+        # update icloud calendar by inserting all the new shifts in the roster to
+        # calendar (update existing ones)
+        success_count = 0
+        fail_count = 0
+        for new_shift in new_shifts:
+            try:
+                target_calendar.save_event(
+                    ical=new_shift.to_ical(), no_create=False, no_overwrite=False
                 )
+            except Exception:
+                fail_count += 1
+            else:
+                success_count += 1
 
-        success_count = outcomes.count(True)
-        fail_count = outcomes.count(False)
         if (
             QMessageBox.information(
                 self,
@@ -317,21 +330,6 @@ class MainWindow(QMainWindow):
             == QMessageBox.StandardButton.Ok
         ):
             sys.exit(0)
-
-    @staticmethod
-    def __save_calendar_event(calendar, outcome_list, index, **kwargs):
-        try:
-            calendar.save_event(**kwargs)
-        except ConsistencyError as err:
-            shift_ical = kwargs.get("ical")  # bytes object from icalendar.Event
-            if shift_ical is None:
-                raise
-            sys.stderr.write(f"{err}\n")
-            if LogFile is not None:
-                shift_str = shift_ical.decode("utf8").replace("\r", "")
-                LogFile.write(f"Could not write shift: {shift_str}\n")
-        else:
-            outcome_list[index] = True
 
 
 @final
