@@ -13,13 +13,14 @@ from typing import final
 
 import pandas as pd
 from caldav import calendarobjectresource
-from caldav.davclient import get_davclient
+from caldav.davclient import get_davclient  # pyright: ignore[reportUnknownVariableType]
 from caldav.lib.error import (
     AuthorizationError,
     ConsistencyError,
     NotFoundError,
     PutError,
 )
+from icalendar.cal import Event
 from pandas.core.frame import DataFrame
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -323,58 +324,33 @@ class MainWindow(QMainWindow):
         # is in the new roster, it's SEQUENCE property is incremented (ie. it will be
         # updated) in the icloud calendar.
 
-        old_shifts: list[calendarobjectresource.Event] = get_shifts_from_calendar(
+        existing_shifts: list[calendarobjectresource.Event] = get_shifts_from_calendar(
             target_calendar, min_date, max_date
         )
-        # If there are any shifts in the current calendar in icloud, check them against
-        # shifts in uploaded roster. If new roster does not have same shifts, then
-        # delete them from icloud calendar.
-        if len(old_shifts) > 0:
-            print(f"Found {len(old_shifts)} shifts in current roster")
-            if LogFile is not None:
-                LogFile.write(f"Found {len(old_shifts)} shifts in current roster\n")
-
-            # check for differences between old and new and delete set(old) - set(new)
-            outdated_shifts: list[calendarobjectresource.Event] = []
-            for shift in old_shifts:
-                if shift.icalendar_component not in updated_shifts:
-                    outdated_shifts.append(shift)
-            print("\nOutdated Shifts")
-            for shift in outdated_shifts:
-                if LogFile is not None:
-                    LogFile.write(str(shift))
-                shift.delete()  ## BLOCKING !!!
-        else:
-            print(
-                f"No shifts were found for the time period from {min_date} to {max_date}"
-            )
-
-        # collect all shifts in uploaded new roster that are not in icloud calendar
-        new_shifts: list[Shift] = []
-        for new_shift in updated_shifts:
-            for old_shift in old_shifts:
-                old_shift_uid = old_shift.icalendar_component.get("UID")
-                if new_shift.uid == old_shift_uid:
-                    print(
-                        f"New shift: {new_shift.start} {new_shift.get('summary')}\n"
-                        f"Old shift: {old_shift.component.start} {old_shift.component.get('summary')}"
-                    )
+        outdated_shifts: list[calendarobjectresource.Event] = []
+        for old_shift in existing_shifts:
+            for new_shift in updated_shifts:
+                if new_shift.uid == old_shift.component.uid:
+                    print(f"Found in current calendar: {new_shift}")
                     break
             else:
-                new_shifts.append(new_shift)
+                outdated_shifts.append(old_shift)
 
-        msg = f"{len(new_shifts)} new shifts were found from {min_date.date()} to {max_date.date()} in {target_calendar.name}"
-        print(msg)
-        LogFile.write(f"{msg}\n")
+        if len(outdated_shifts) > 0:
+            print(
+                f"Found {len(outdated_shifts)} outdated shifts in {self.calendar_name} from {min_date} to {max_date}"
+            )
+            for outdated_shift in outdated_shifts:
+                outdated_shift.delete()
+        else:
+            print(
+                f"No outdated shifts were found for the time period from {min_date} to {max_date}"
+            )
 
         # insert all shifts in the new roster to calendar (update existing ones)
-        # threads = []
-        # Gather outcome of writing to calendar (caldav.Calendar.save_event()). If
-        # writing successful TRUE, if failed FALSE. Position in the list tallys with
-        # position in the list of shifts in `new_shifts` (ie. they're parellel lists)
         success_count = 0
         fail_count = 0
-        for shift in new_shifts:
+        for shift in updated_shifts:
             if self.__save_calendar_event(
                 target_calendar,
                 {"ical": shift.to_ical(), "no_create": False, "no_overwrite": False},
