@@ -29,19 +29,8 @@ class TermRosterParser:
     FULLNAME_PATTERN = rf"(?:{NAME_PART_PATTERN}\s+){{1,}}{NAME_PART_PATTERN}"
     REGEX = re.compile(FULLNAME_PATTERN)
 
-    def __init__(self, roster_file: str | Path):
-        if isinstance(roster_file, Path):
-            roster_path = roster_file
-        else:
-            roster_path = Path(roster_file)
-        if not roster_path.exists():
-            raise FileNotFoundError(f'Path "{roster_file}" does not exist')
-        if not roster_path.is_file():
-            raise ValueError(f'Path "{roster_file}" exists, but is not a file')
-
-        self.roster: DataFrame = pd.read_excel(
-            roster_file, sheet_name=-1, engine="openpyxl"
-        )
+    def __init__(self, roster: DataFrame):
+        self.roster: DataFrame = roster # DataFrame holding all data of the roster
         self.date_row: int = self.find_date_row()
 
         # Dbg
@@ -62,7 +51,6 @@ class TermRosterParser:
 
         # Dbg
         sys.stderr.write(f"name-to-row dict has {len(self.name_to_row)} names\n")
-
 
     @staticmethod
     def name_matched(s: str) -> bool:
@@ -142,17 +130,18 @@ if __name__ == "__main__":
     ROSTER_DIR = "data"
     results: dict[str, dict[str, str | int | None]] = dict()
     roster_dir = Path(ROSTER_DIR)
-    for i, roster_file in enumerate(roster_dir.glob("*.xlsx"), 1):
-        print(f"Loading roster #{i}: {roster_file.name}")
+    for i, filename in enumerate(roster_dir.glob("*.xlsx"), 1):
+        print(f"Loading roster #{i}: {filename.name}")
         t0 = perf_counter()
-        parser = TermRosterParser(roster_file)
+        roster = pd.read_excel(filename)
+        parser = TermRosterParser(roster)
         delta = perf_counter() - t0
         t_load_times += delta
         print(f"Done in {delta:.3f} seconds")
         print("------------------------------------------------------------")
 
         date_row = parser.date_row
-        results.setdefault(roster_file.name, {})["date_row"] = (
+        results.setdefault(filename.name, {})["date_row"] = (
             date_row if date_row else None
         )
 

@@ -21,6 +21,7 @@ class Shift(Event):
     """
     NOTE: Time zone is hard coded as Australia/Sydney
     """
+
     APP_NAME = APP_NAME
     APP_VERSION = APP_VERSION
 
@@ -44,9 +45,16 @@ class Shift(Event):
         N=time(22, 30, 0, tzinfo=_MY_TIMEZONE),  # 10.30 PM
     )
 
-    def __init__(self, shift_date: date, shift_label: str, *args, **kwargs):
+    # TODO: constructor need to use `employee_id` & `employee_name` as parameters
+    def __init__(
+        self,
+        shift_date: date,
+        shift_label: str,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
-        shift_label = shift_label.strip().upper()  # ? methods maybe unnecessary
+        shift_label = str(shift_label).strip().upper()  # ? methods maybe unnecessary
         self.date = shift_date  # offset-naive (self.start/self.end are not)
 
         # Shifts have a start time, others do not. So DTSTART property of shifts
@@ -76,9 +84,8 @@ class Shift(Event):
         self.sequence = 0  # increment this each time the shift is modified
         self.add("X-PUBLISHED-BY", f"{self.APP_NAME}")  # use this to filter out shifts
 
-
     # DATE-TIME of DTSTART property determines the sorting order.
-    def __lt__(self, other:Self)->bool:
+    def __lt__(self, other: Self) -> bool:
         """
         datetime value of DTSTART property of the VEVENT dictates the sorting order.
         """
@@ -88,13 +95,13 @@ class Shift(Event):
 
     # Integral value of UUID of the VEVENT determines hash value and uniqueness
     @override
-    def __hash__(self)->int:
+    def __hash__(self) -> int:
         """
         Integral value of UUID of the VEVENT determines hash value and uniqueness.
         """
         return self.uuid.int
 
-    def __generate_uid(self)->uuid.UUID:
+    def __generate_uid(self) -> uuid.UUID:
         """
         Generate deterministic UID compliant with RFC 4122 section 4.4 and 4.5
         UID is generated using hash of random hardcoded string AND SHA1 hash of
@@ -123,6 +130,15 @@ class Shift(Event):
             return NotImplemented
 
         return self.uid == other.uid
+
+    @override
+    def __str__(self):
+        return f"""
+    Shift: {self.get("summary")}
+    Start: {self.start}
+    UID: {self.uid}
+    Published by: {self.get("X-PUBLISHED-BY")}
+    """
 
 
 if __name__ == "__main__":
