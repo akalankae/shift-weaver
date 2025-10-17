@@ -8,7 +8,6 @@ import sys
 import time
 from collections.abc import Sequence
 from datetime import datetime
-from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import final
 
@@ -358,7 +357,7 @@ class MainWindow(QMainWindow):
                 if new_shift.uid == old_shift_uid:
                     print(
                         f"New shift: {new_shift.start} {new_shift.get('summary')}\n"
-                        f"Old shift: {old_shift.component.dtstart} {old_shift.component.get('summary')}"
+                        f"Old shift: {old_shift.component.start} {old_shift.component.get('summary')}"
                     )
                     break
             else:
@@ -375,22 +374,14 @@ class MainWindow(QMainWindow):
         # position in the list of shifts in `new_shifts` (ie. they're parellel lists)
         success_count = 0
         fail_count = 0
-        with ThreadPool(len(new_shifts)) as pool:
-            args = [
-                (
-                    target_calendar,
-                    {
-                        "ical": shift.to_ical(),
-                        "no_create": False,
-                        "no_overwrite": False,
-                    },
-                )
-                for shift in new_shifts
-            ]
-            results = pool.starmap(self.__save_calendar_event, args)
-            result_list = list(results)
-            success_count = result_list.count(True)
-            fail_count = result_list.count(False)
+        for shift in new_shifts:
+            if self.__save_calendar_event(
+                target_calendar,
+                {"ical": shift.to_ical(), "no_create": False, "no_overwrite": False},
+            ):
+                success_count += 1
+            else:
+                fail_count += 1
 
         LogFile.write(f"""
     * Successfully written: {success_count} shifts
